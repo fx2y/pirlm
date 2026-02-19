@@ -56,7 +56,7 @@ run = "python -m scripts.replay_check"
 [tasks.fast]
 description = "Inner loop gate (<3s target): lint+subset unit+proto"
 alias = ["f"]
-run = "ruff check pirml scripts tests && python -m unittest -q tests.test_protocol tests.test_replay && python -m pirml --prog tests/prog_ok.py --out-dir out/fast && python -m scripts.proto_lint --trace out/fast/trace.ndjson"
+run = "ruff check pirml scripts tests && python -m unittest -q tests.test_protocol tests.test_replay tests.test_c0_reconcile && python -m pirml --prog tests/prog_ok.py --out-dir out/fast && python -m scripts.proto_lint --trace out/fast/trace.ndjson"
 
 [tasks.ci]
 description = "Full deterministic fail-fast gate ladder"

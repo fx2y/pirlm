@@ -2,7 +2,9 @@
 # emitted by PiRLM Compiler
 
 import asyncio
-from pirml.runtime import call_tool, write_artifact, get_args
+
+from pirml.runtime import call_tool, get_args
+
 
 async def main():
     args = get_args() # Query: "Compare Q4 revenue of Apple and Microsoft"
