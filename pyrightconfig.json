@@ -1,0 +1,6 @@
+{
+  "include": ["pirml", "scripts", "tests"],
+  "pythonVersion": "3.12",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false
+}

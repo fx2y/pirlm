@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+.pyright/
+.mypy_cache/
+.ruff_cache/
+out/
+*.pyc
+
+.tmp/
+AGENTS.local.md
+
+# Spec filtering (intentional project structure)
+spec-*/
+!spec-0/
+spec-0/*
+!spec-0/01*
+!spec-0/00-learnings.jsonl
