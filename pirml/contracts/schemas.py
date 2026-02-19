@@ -3,13 +3,19 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 
+class ErrorObject(TypedDict, total=False):
+    type: str
+    msg: str
+    retryable: bool
+
+
 class ResultRow(TypedDict, total=False):
     """S.TY1: Typed payload"""
 
     id: str
     tool: str
     ok: bool
-    error: str
+    error: ErrorObject
 
 
 class FinalResult(TypedDict):
@@ -30,7 +36,8 @@ class ResultFrame(TypedDict, total=False):
     id: str
     ok: bool
     output: Any
-    error: str
+    error: ErrorObject
+    meta: dict[str, Any]
     ts: int
     truncated: bool
     truncated_bytes: int
@@ -58,7 +65,14 @@ FINAL_JSON_SCHEMA = {
                     "id": {"type": "string"},
                     "tool": {"type": "string"},
                     "ok": {"type": "boolean"},
-                    "error": {"type": "string"},
+                    "error": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string"},
+                            "msg": {"type": "string"},
+                            "retryable": {"type": "boolean"},
+                        },
+                    },
                 },
             },
         },

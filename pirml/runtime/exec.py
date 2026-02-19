@@ -82,32 +82,57 @@ def run_live(
                 tool = cast(str, frame.get("tool"))
                 args = cast(Mapping[str, Any], frame.get("args"))
 
-                try:
-                    output = registry.execute(tool, args)
-                    res_frame: JSONObject = {
-                        "op": "result",
-                        "id": call_id,
-                        "ok": True,
-                        "output": output,
-                        "ts": clock.now(),
-                    }
-                except Exception as exc:  # noqa: BLE001
-                    res_frame = {
-                        "op": "result",
-                        "id": call_id,
-                        "ok": False,
-                        "error": str(exc),
-                        "ts": clock.now(),
-                    }
+                # C3.T5: Retry wrapper
+                max_retries = 2
+                attempt = 0
+                res_payload: Any = {
+                    "ok": False,
+                    "error": {"type": "unknown", "msg": "no execution", "retryable": False},
+                }
+
+                while attempt <= max_retries:
+                    res_payload = registry.execute(tool, args)
+                    if res_payload.get("ok"):
+                        break
+
+                    error = res_payload.get("error", {})
+                    if not error.get("retryable"):
+                        break
+
+                    attempt += 1
+                    # Exponential backoff could be here, but for now simple retry
+
+                res_frame: JSONObject = {
+                    "op": "result",
+                    "id": call_id,
+                    "ok": res_payload.get("ok", False),
+                    "ts": clock.now(),
+                }
+                if res_payload.get("ok"):
+                    res_frame["output"] = res_payload.get("output")
+                else:
+                    res_frame["error"] = res_payload.get("error")
+
+                if "meta" in res_payload:
+                    res_frame["meta"] = res_payload["meta"]
+                else:
+                    res_frame["meta"] = {}
+
+                if attempt > 0:
+                    res_frame["meta"]["retries"] = attempt
 
                 res_frame, _ = enforce_line_limit(res_frame, max_line_bytes)
                 validator.validate_frame(res_frame)
                 write_frame(proc.stdin, res_frame, max_line_bytes)  # type: ignore
                 frames.append(res_frame)
 
-                row: ResultRow = {"id": call_id, "tool": tool, "ok": bool(res_frame["ok"])}
+                row: ResultRow = {
+                    "id": call_id,
+                    "tool": tool,
+                    "ok": bool(res_frame["ok"]),
+                }
                 if not res_frame["ok"]:
-                    row["error"] = str(res_frame.get("error"))
+                    row["error"] = res_frame.get("error")  # type: ignore
                 result_rows.append(row)
 
                 if not res_frame["ok"]:

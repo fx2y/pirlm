@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import unittest
+from collections.abc import Mapping
+from typing import Any
 
 from pirml.clock import SequenceClock
 from pirml.engine import run_live
@@ -27,16 +29,29 @@ class ReconcileTests(unittest.TestCase):
 
         self.assertEqual(new_call_id(1), "c00001")
 
-    @unittest.expectedFailure
     def test_retryable_behavior_triggers_retry(self) -> None:
-        """C0.T5: tool with retryable=true should be retried (pending)"""
+        """C3.T5: tool with retryable=true should be retried"""
         import tempfile
         from pathlib import Path
 
-        registry = ToolRegistry()
+        from pirml.runtime.tools import ErrorType, ToolResult
 
-        def fail_once(args: object) -> object:
-            raise Exception("retryable failure")
+        registry = ToolRegistry()
+        fail_count = 0
+
+        def fail_once(args: Mapping[str, Any]) -> ToolResult:
+            nonlocal fail_count
+            fail_count += 1
+            if fail_count == 1:
+                return {
+                    "ok": False,
+                    "error": {
+                        "type": ErrorType.EXECUTION_ERROR,
+                        "msg": "retryable failure",
+                        "retryable": True,
+                    },
+                }
+            return {"ok": True, "output": "finally success"}
 
         registry.register("fail", fail_once)
 
@@ -44,19 +59,27 @@ class ReconcileTests(unittest.TestCase):
             tmp.write("from pirml.protocol import call, send_final\n")
             tmp.write("def main():\n")
             tmp.write("    call('fail', {})\n")
-            tmp.write("    send_final(True, {})\n")
+            tmp.write("    send_final(True, {'ok': True, 'results': []})\n")
             tmp.write("if __name__ == '__main__': main()\n")
             tmp_path = Path(tmp.name)
 
         try:
-            # This will fail because it only tries once and returns ok=False
             output = run_live(tmp_path, registry, SequenceClock(1700000000), 8192)
 
-            # We expect at least 2 call frames for 'fail' if retry happened
-            call_count = len(
-                [f for f in output.frames if f.get("op") == "call" and f.get("tool") == "fail"]
-            )
-            self.assertGreater(call_count, 1, "Should have retried the tool call")
+            # We expect 2 result frames for 'fail' if retry happened?
+            # No, supervisor retries internally, it only sends ONE result to the program.
+            # Wait, if supervisor retries, it should only send the FINAL result to the program.
+            # Let's check my impl in exec.py
+
+            self.assertEqual(fail_count, 2, "Should have retried the tool call")
+
+            # Check frames
+            results = [f for f in output.frames if f.get("op") == "result"]
+            self.assertEqual(len(results), 1)
+            self.assertTrue(results[0].get("ok"))
+            self.assertEqual(results[0].get("output"), "finally success")
+            self.assertEqual(results[0].get("meta", {}).get("retries"), 1)
+
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
