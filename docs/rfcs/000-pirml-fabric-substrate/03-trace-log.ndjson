@@ -1,0 +1,5 @@
+{"op": "call", "id": "c001", "tool": "web.search", "args": {"q": "Apple Q4 2025 revenue"}, "ts": 1708345600.0}
+{"op": "call", "id": "c002", "tool": "web.search", "args": {"q": "Microsoft Q4 2025 revenue"}, "ts": 1708345600.1}
+{"op": "result", "id": "c001", "ok": true, "output": "...", "ts": 1708345601.5}
+{"op": "result", "id": "c002", "ok": true, "output": "...", "ts": 1708345601.6}
+{"op": "final", "ok": true, "result": {"comparison": [...]}, "ts": 1708345602.0}
