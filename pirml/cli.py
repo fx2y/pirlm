@@ -6,7 +6,6 @@ from pathlib import Path
 
 from .clock import SequenceClock
 from .engine import run_live, run_replay
-from .program import load_program
 from .protocol import (
     MAX_LINE_BYTES_DEFAULT,
     ProtocolError,
@@ -45,9 +44,8 @@ def _run(args: argparse.Namespace) -> int:
     else:
         if not args.prog:
             raise ValueError("--prog is required unless --replay is provided")
-        program = load_program(Path(args.prog))
         output = run_live(
-            program=program,
+            program_path=Path(args.prog),
             registry=default_registry(),
             clock=SequenceClock.from_env(),
             max_line_bytes=max_line_bytes,

@@ -30,25 +30,36 @@ class ReconcileTests(unittest.TestCase):
     @unittest.expectedFailure
     def test_retryable_behavior_triggers_retry(self) -> None:
         """C0.T5: tool with retryable=true should be retried (pending)"""
-        # We'll need a way to inject a failing tool that then succeeds or just count calls
-        # This is pending the C2/C3 implementation of the retry loop
+        import tempfile
+        from pathlib import Path
+
         registry = ToolRegistry()
 
         def fail_once(args: object) -> object:
-            raise Exception("retryable failure")  # Current engine doesn't know about retryable
+            raise Exception("retryable failure")
 
         registry.register("fail", fail_once)
 
-        program: list[JSONObject] = [{"tool": "fail", "args": {}}]
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as tmp:
+            tmp.write("from pirml.protocol import call, send_final\n")
+            tmp.write("def main():\n")
+            tmp.write("    call('fail', {})\n")
+            tmp.write("    send_final(True, {})\n")
+            tmp.write("if __name__ == '__main__': main()\n")
+            tmp_path = Path(tmp.name)
 
-        # This will fail because it only tries once and returns ok=False
-        output = run_live(program, registry, SequenceClock(1700000000), 8192)
+        try:
+            # This will fail because it only tries once and returns ok=False
+            output = run_live(tmp_path, registry, SequenceClock(1700000000), 8192)
 
-        # We expect at least 2 call frames for 'fail' if retry happened
-        call_count = len(
-            [f for f in output.frames if f.get("op") == "call" and f.get("tool") == "fail"]
-        )
-        self.assertGreater(call_count, 1, "Should have retried the tool call")
+            # We expect at least 2 call frames for 'fail' if retry happened
+            call_count = len(
+                [f for f in output.frames if f.get("op") == "call" and f.get("tool") == "fail"]
+            )
+            self.assertGreater(call_count, 1, "Should have retried the tool call")
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink()
 
     def test_subprocess_supervisor_usage(self) -> None:
         """C0.T5: supervisor must use subprocess.Popen (pending impl)"""
