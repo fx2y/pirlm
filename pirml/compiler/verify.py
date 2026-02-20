@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
-from typing import cast
+from typing import Any, cast
 
 from pirml.compiler.types import CompileContract, VerificationError
 
@@ -161,40 +161,91 @@ class CompileVerifier:
         uses_gather = any(
             isinstance(n, ast.Attribute) and n.attr == "gather" for n in ast.walk(tree)
         )
-        # Simple fanout check: more than one await call in main?
-        # Actually S.AST6 just checks for 'gather' attribute.
-        # Let's check if there are multiple awaited tool calls and no gather.
 
-        tool_call_nodes = [
-            n
-            for n in ast.walk(tree)
-            if isinstance(n, ast.Await)
-            and isinstance(n.value, ast.Call)
-            and isinstance((f := n.value.func), ast.Name)
-            and f.id.startswith("TOOL_")
-        ]
+        # T1: Dependency-aware AST walk
+        # 1. Identify all tool calls and where their results are assigned
+        tool_call_info: list[dict[str, Any]] = []
+        for n in ast.walk(tree):
+            # We look for 'await TOOL_X(...)'
+            if isinstance(n, ast.Await) and isinstance(n.value, ast.Call) and \
+               isinstance(n.value.func, ast.Name) and n.value.func.id.startswith("TOOL_"):
+                
+                # Check if it's assigned to a variable: x = await ...
+                target_var: str | None = None
+                parent = self._get_parent(tree, n)
+                if isinstance(parent, ast.Assign) and len(parent.targets) == 1 and \
+                   isinstance(parent.targets[0], ast.Name):
+                    target_var = parent.targets[0].id
+                
+                tool_call_info.append({
+                    "node": n,
+                    "tool": n.value.func.id,
+                    "target": target_var,
+                    "args": n.value.args,
+                    "keywords": n.value.keywords,
+                    "lineno": n.lineno
+                })
 
-        if len(tool_call_nodes) > 1 and not uses_gather:
+        # 2. Check for dependencies: is result of TOOL_A used in TOOL_B?
+        def is_dependent(call_b: dict[str, Any], all_calls: list[dict[str, Any]]) -> bool:
+            # Check if any arguments or keywords in call_b use a 'target' from a previous call
+            for call_a in all_calls:
+                if call_a == call_b or not call_a["target"]:
+                    continue
+                
+                # Search for call_a["target"] in call_b's arguments
+                for arg in call_b["args"]:
+                    for sub in ast.walk(arg):
+                        if isinstance(sub, ast.Name) and sub.id == call_a["target"]:
+                            return True
+                for kw in call_b["keywords"]:
+                    for sub in ast.walk(kw.value):
+                        if isinstance(sub, ast.Name) and sub.id == call_a["target"]:
+                            return True
+            return False
+
+        # 3. Identify independent calls that ARE NOT GATHERED
+        # If they are awaited serially and no gather is used, they might violate policy.
+        independent_serial_calls: list[dict[str, Any]] = []
+        for i, call in enumerate(tool_call_info):
+            if not is_dependent(call, tool_call_info[:i]) and i > 0 and \
+               not any(is_dependent(call, tool_call_info[:i+1]) for call in tool_call_info[i:i+1]):
+                 # If it's awaited in the main body (not inside a loop/branch that depends on previous)
+                 # For simplicity, if no gather is used at all, we flag it.
+                 independent_serial_calls.append(call)
+
+        if len(tool_call_info) > 1 and not uses_gather and independent_serial_calls:
             # Check for SERIAL_OK (S.AST7)
-            if "SERIAL_OK:" not in prog_src:
-                self.add_error(
-                    "missing_gather",
-                    "Multiple tool calls found without asyncio.gather() or SERIAL_OK: escape",
-                )
-            else:
-                # C2.T8: Check reason (S.AST8)
-                # This is a bit crude, we just check if any line has SERIAL_OK: with a valid reason
-                found_valid_reason = False
-                for line in prog_src.splitlines():
-                    if "SERIAL_OK:" in line:
-                        reason = line.split("SERIAL_OK:", 1)[1].strip().split()[0]  # get first word
-                        if reason in ALLOW_SERIAL_REASONS:
-                            found_valid_reason = True
-                            break
-                if not found_valid_reason:
+            found_valid_reason = False
+            for line in prog_src.splitlines():
+                if "SERIAL_OK:" in line:
+                    parts = line.split("SERIAL_OK:", 1)
+                    if len(parts) > 1:
+                        reason_part = parts[1].strip().split()
+                        if reason_part:
+                            reason = reason_part[0]
+                            if reason in ALLOW_SERIAL_REASONS:
+                                found_valid_reason = True
+                                break
+            
+            if not found_valid_reason:
+                if "SERIAL_OK:" in prog_src:
                     self.add_error(
                         "invalid_serial_reason", "SERIAL_OK: found but reason is not in allowlist"
                     )
+                else:
+                    self.add_error(
+                        "missing_gather",
+                        "Independent tool calls found without asyncio.gather() or SERIAL_OK: escape",
+                    )
+
+    def _get_parent(self, tree: ast.AST, target: ast.AST) -> ast.AST | None:
+        """Helper to find parent of a node."""
+        for node in ast.walk(tree):
+            for child in ast.iter_child_nodes(node):
+                if child is target:
+                    return node
+        return None
 
 
 def verify_compile_output(

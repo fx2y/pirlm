@@ -130,8 +130,11 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
                 else:
                     # G.P0.2: basic validation of example vs schema
                     ex_dict = cast(dict[str, Any], ex)
-                    if isinstance(schema, dict) and "properties" in schema:
-                        props = cast(dict[str, Any], schema["properties"])
+                    if isinstance(schema, dict):
+                        props = cast(dict[str, Any], schema.get("properties", {}))
+                        required = cast(list[str], schema.get("required", []))
+
+                        # Check for unknown properties
                         for arg in ex_dict:
                             if arg not in props:
                                 errors.append(
@@ -141,6 +144,41 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
                                         "path": f"input_examples[{i}]",
                                     }
                                 )
+
+                        # Check for missing required properties
+                        for req in required:
+                            if req not in ex_dict:
+                                errors.append(
+                                    {
+                                        "code": "example_invalid",
+                                        "msg": f"example {i} missing required property '{req}'",
+                                        "path": f"input_examples[{i}]",
+                                    }
+                                )
+
+                        # Check for type mismatch
+                        for arg, val in ex_dict.items():
+                            if arg in props:
+                                p_def = props[arg]
+                                p_type = p_def.get("type")
+                                if p_type:
+                                    valid = True
+                                    if (p_type == "string" and not isinstance(val, str)) or \
+                                       (p_type == "number" and not isinstance(val, (int, float))) or \
+                                       (p_type == "integer" and not (isinstance(val, int) and not isinstance(val, bool))) or \
+                                       (p_type == "boolean" and not isinstance(val, bool)) or \
+                                       (p_type == "object" and not isinstance(val, dict)) or \
+                                       (p_type == "array" and not isinstance(val, list)):
+                                        valid = False
+
+                                    if not valid:
+                                        errors.append(
+                                            {
+                                                "code": "example_invalid",
+                                                "msg": f"example {i} property '{arg}' type mismatch: expected {p_type}",
+                                                "path": f"input_examples[{i}]",
+                                            }
+                                        )
 
     # other types
     for key, t in [

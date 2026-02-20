@@ -68,55 +68,105 @@ def validate_result(result: Any, index: int) -> list[str]:
     return errors
 
 
-def main() -> int:
-    final_path = Path("out/ci/final.json")
-    if not final_path.exists():
-        print(f"Skipping: {final_path} not found")
-        return 0
-
-    try:
-        final = json.loads(final_path.read_text())
-    except Exception as exc:
-        print(f"Error reading {final_path}: {exc}", file=sys.stderr)
-        return 1
-
+def validate_contract(contract: Any, path: str) -> list[str]:
     errors: list[str] = []
+    if not isinstance(contract, dict):
+        return [f"{path} must be an object"]
 
-    # Root checks
-    if not isinstance(final, dict):
-        errors.append("Root must be an object")
-    else:
-        # Required
-        if "ok" not in final:
-            errors.append("Root missing required 'ok'")
-        if "results" not in final:
-            errors.append("Root missing required 'results'")
+    # Required: ["tool_deps", "io_schema", "budgets", "assertions"]
+    for req in ["tool_deps", "io_schema", "budgets", "assertions"]:
+        if req not in contract:
+            errors.append(f"{path} missing required '{req}'")
 
-        # Additional properties check (G17)
-        allowed = {"ok", "results", "output", "meta"}
-        for k in cast(Mapping[str, Any], final):
-            if k not in allowed:
-                errors.append(f"Root has unexpected field '{k}'")
+    if "tool_deps" in contract:
+        if not isinstance(contract["tool_deps"], list):
+            errors.append(f"{path}.tool_deps must be a list")
+        elif not all(isinstance(x, str) for x in contract["tool_deps"]):
+            errors.append(f"{path}.tool_deps must be a list of strings")
 
-        if "ok" in final and not isinstance(final["ok"], bool):
-            errors.append("Root.ok must be a boolean")
+    if "io_schema" in contract:
+        io = contract["io_schema"]
+        if not isinstance(io, dict):
+            errors.append(f"{path}.io_schema must be an object")
+        else:
+            for req in ["trace_ptr", "final_schema", "citations_schema"]:
+                if req not in io:
+                    errors.append(f"{path}.io_schema missing required '{req}'")
+            if "trace_ptr" in io and not isinstance(io["trace_ptr"], str):
+                errors.append(f"{path}.io_schema.trace_ptr must be a string")
 
-        if "results" in final:
-            results = cast(list[Any], final["results"])
-            for i, res in enumerate(results):
-                errors.extend(validate_result(res, i))
+    if "budgets" in contract:
+        budgets = contract["budgets"]
+        if not isinstance(budgets, dict):
+            errors.append(f"{path}.budgets must be an object")
+        else:
+            fields = ["max_calls", "max_parallel", "max_bytes_in", "max_bytes_out", "timeout_s"]
+            for f in fields:
+                if f not in budgets:
+                    errors.append(f"{path}.budgets missing required '{f}'")
+                elif not isinstance(budgets[f], int) or budgets[f] < 1:
+                    errors.append(f"{path}.budgets.{f} must be a positive integer")
 
-        if "meta" in final and not isinstance(final["meta"], dict):
-            errors.append("Root.meta must be an object")
+    if "assertions" in contract and not isinstance(contract["assertions"], list):
+        errors.append(f"{path}.assertions must be a list")
 
-    if errors:
-        print(f"Schema validation failed for {final_path}:", file=sys.stderr)
-        for err in errors:
-            print(f"  - {err}", file=sys.stderr)
-        return 1
+    return errors
 
-    print(f"Verified {final_path}")
-    return 0
+
+def main() -> int:
+    exit_code = 0
+
+    # 1. Validate final.json
+    final_path = Path("out/ci/final.json")
+    if final_path.exists():
+        try:
+            final = json.loads(final_path.read_text())
+            errors = []
+            if not isinstance(final, dict):
+                errors.append("Root must be an object")
+            else:
+                if "ok" not in final:
+                    errors.append("Root missing required 'ok'")
+                if "results" not in final:
+                    errors.append("Root missing required 'results'")
+                allowed = {"ok", "results", "output", "meta"}
+                for k in cast(Mapping[str, Any], final):
+                    if k not in allowed:
+                        errors.append(f"Root has unexpected field '{k}'")
+                if "ok" in final and not isinstance(final["ok"], bool):
+                    errors.append("Root.ok must be a boolean")
+                if "results" in final:
+                    results = cast(list[Any], final["results"])
+                    for i, res in enumerate(results):
+                        errors.extend(validate_result(res, i))
+            if errors:
+                print(f"Schema validation failed for {final_path}:", file=sys.stderr)
+                for err in errors:
+                    print(f"  - {err}", file=sys.stderr)
+                exit_code = 1
+            else:
+                print(f"Verified {final_path}")
+        except Exception as exc:
+            print(f"Error reading {final_path}: {exc}", file=sys.stderr)
+            exit_code = 1
+
+    # 2. Validate all contract.json in out/
+    for contract_path in Path("out").rglob("contract.json"):
+        try:
+            contract = json.loads(contract_path.read_text())
+            errors = validate_contract(contract, str(contract_path))
+            if errors:
+                print(f"Schema validation failed for {contract_path}:", file=sys.stderr)
+                for err in errors:
+                    print(f"  - {err}", file=sys.stderr)
+                exit_code = 1
+            else:
+                print(f"Verified {contract_path}")
+        except Exception as exc:
+            print(f"Error reading {contract_path}: {exc}", file=sys.stderr)
+            exit_code = 1
+
+    return exit_code
 
 
 if __name__ == "__main__":

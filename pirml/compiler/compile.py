@@ -8,6 +8,7 @@ from pirml.compiler.extract import ExtractionError, extract_blocks
 from pirml.compiler.io import write_compile_error, write_contract, write_prog, write_raw
 from pirml.compiler.model import get_model_adapter
 from pirml.compiler.prompt import build_compile_prompt
+from pirml.compiler.repair import is_trivial_repair, repair_once
 from pirml.compiler.smoke import run_smoke_subprocess
 from pirml.compiler.types import (
     CompileArtifacts,
@@ -42,6 +43,23 @@ def assemble_tools_topk(
 
     # 2. Load selected tools (strict)
     selected_tools = load_selected(names, str(tools_dir))
+
+    # T4: Reject tools lacking examples when ambiguous (optional args or aliases)
+    for tool in selected_tools:
+        name = tool.get("name", "unknown")
+        has_examples = bool(tool.get("input_examples"))
+        has_aliases = bool(tool.get("aliases"))
+        
+        schema = tool.get("input_schema", {})
+        props = schema.get("properties", {})
+        required = schema.get("required", [])
+        has_optional = any(p not in required for p in props)
+
+        if (has_aliases or has_optional) and not has_examples:
+            raise ValueError(
+                f"Tool '{name}' is ambiguous (has aliases or optional args) but lacks input_examples. "
+                "Examples are required for ambiguous tools to ensure compiler precision."
+            )
 
     # 3. Render for prompt
     return render_selected_tools(selected_tools)
@@ -92,6 +110,20 @@ def compile_task(
         # 5. Verify (Cycle C2)
         tool_names = [t["name"] for t in tools]
         contract, errors = verify_compile_output(prog_src, contract_src, tool_names)
+
+        # C4.P3: Repair-once (Bet-A5)
+        if errors:
+            can_repair = all(is_trivial_repair(e["code"]) for e in errors)
+            if can_repair:
+                prog_src, contract_src, repaired = repair_once(prog_src, contract_src, errors)
+                if repaired:
+                    # Re-verify after repair
+                    contract, errors = verify_compile_output(prog_src, contract_src, tool_names)
+            else:
+                # Add a marker that repair was declined for nontrivial errors
+                for e in errors:
+                    if not is_trivial_repair(e["code"]):
+                        e["msg"] = f"[repair_declined] {e['msg']}"
 
         if errors:
             err_file: CompileErrorFile = {

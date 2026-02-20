@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import runpy
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from .protocol import JSONObject
 
@@ -24,12 +23,4 @@ def _validate_step(raw_step: object, idx: int) -> JSONObject:
 
 
 def load_program(path: Path) -> list[JSONObject]:
-    namespace = cast(dict[str, object], runpy.run_path(str(path)))
-    raw_program = namespace.get("PROGRAM")
-    if not isinstance(raw_program, list):
-        raise ValueError("PROGRAM must be a list of tool calls")
-
-    steps: list[JSONObject] = []
-    for idx, raw_step in enumerate(cast(list[Any], raw_program)):
-        steps.append(_validate_step(raw_step, idx))
-    return steps
+    raise RuntimeError("pirml.program.load_program is legacy; compiler path forbidden")

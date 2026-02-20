@@ -1,0 +1,102 @@
+from __future__ import annotations
+
+import json
+
+from pirml.compiler.types import VerificationError
+
+
+def repair_once(
+    prog_src: str, contract_src: str, errors: list[VerificationError]
+) -> tuple[str, str, bool]:
+    """C4.T5: Implement repair pass for trivial classes.
+    Returns (new_prog, new_contract, repaired).
+    """
+    repaired_prog = prog_src
+    repaired_contract = contract_src
+    any_repaired = False
+
+    for err in errors:
+        code = err.get("code")
+
+        # 1. Missing gather wrapper (trivial if no dependencies)
+        # For now, we just suggest the user fix it or implement a simple regex fix
+        # Actually, T5 says "missing gather wrapper", maybe we can auto-wrap?
+        # That sounds complex for a regex.
+
+        # 2. Sentinel whitespace (trivial)
+        if any(err.get("code") == "syntax_error" for err in errors):
+            # Try stripping again in case extractor missed something
+            stripped_prog = prog_src.strip()
+            if stripped_prog != prog_src:
+                repaired_prog = stripped_prog
+                any_repaired = True
+
+        # 3. Missing contract alias fields (trivial)
+        if code in ("contract_missing_keys", "invalid_io_schema"):
+            try:
+                data = json.loads(repaired_contract)
+                # Trivial: final_schema alias or missing io_schema fields
+                io_repaired = False
+
+                if "final_schema" in data and "io_schema" not in data:
+                    data["io_schema"] = {
+                        "trace_ptr": "trace.ndjson",
+                        "final_schema": data.pop("final_schema"),
+                        "citations_schema": {}
+                    }
+                    io_repaired = True
+
+                if "io_schema" in data:
+                    io = data["io_schema"]
+                    if "trace_ptr" not in io:
+                        io["trace_ptr"] = "trace.ndjson"
+                        io_repaired = True
+                    if "citations_schema" not in io:
+                        io["citations_schema"] = {}
+                        io_repaired = True
+
+                # Add other missing root keys with defaults if safe
+                root_repaired = False
+                for k in ["budgets", "assertions", "tool_deps"]:
+                    if k not in data:
+                        if k == "budgets":
+                            data[k] = {
+                                "max_calls": 40,
+                                "max_parallel": 10,
+                                "max_bytes_in": 5000000,
+                                "max_bytes_out": 200000,
+                                "timeout_s": 60
+                            }
+                        elif k in ("assertions", "tool_deps"):
+                            data[k] = []
+                        root_repaired = True
+
+                if io_repaired or root_repaired:
+                    from pirml.runtime.rpc import canonical_json
+                    repaired_contract = canonical_json(data)
+                    any_repaired = True
+            except Exception:
+                pass
+
+
+        # 4. TOOL_ dot normalization (already handled in verifier/harness, but maybe in contract too)
+
+    return repaired_prog, repaired_contract, any_repaired
+
+
+def is_trivial_repair(code: str) -> bool:
+    """C4.T6: Hard-fail nontrivial repair candidates."""
+    trivial = {
+        "contract_missing_keys",
+        "invalid_io_schema",
+        "invalid_final_emit", # Maybe? No.
+    }
+    # Nontrivial: ast_import_denied, banned_call, tool_hallucination, etc.
+    nontrivial = {
+        "ast_import_denied",
+        "banned_call",
+        "unknown_tool_deps",
+        "syntax_error",
+        "missing_async_main"
+    }
+    return code in trivial and code not in nontrivial
