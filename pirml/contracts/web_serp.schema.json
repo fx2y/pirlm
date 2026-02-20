@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebSerpRow",
+  "type": "object",
+  "required": ["url", "title", "snippet", "rank", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "url": { "type": "string", "minLength": 1 },
+    "title": { "type": "string" },
+    "snippet": { "type": "string" },
+    "rank": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 }
+  }
+}

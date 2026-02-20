@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebEvalRow",
+  "type": "object",
+  "required": ["qid", "plan", "acc", "fetches", "bytes", "chunks", "cache_hit"],
+  "additionalProperties": false,
+  "properties": {
+    "qid": { "type": "string", "minLength": 1 },
+    "plan": { "type": "string", "minLength": 1 },
+    "acc": { "type": "number" },
+    "fetches": { "type": "integer", "minimum": 0 },
+    "bytes": { "type": "integer", "minimum": 0 },
+    "chunks": { "type": "integer", "minimum": 0 },
+    "cache_hit": { "type": "number" },
+    "note": { "type": "string" }
+  }
+}

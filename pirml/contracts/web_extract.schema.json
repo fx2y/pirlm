@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebExtractRow",
+  "type": "object",
+  "required": [
+    "doc_sha256",
+    "url",
+    "chunk_id",
+    "kind",
+    "path_hint",
+    "text",
+    "score",
+    "source_rank",
+    "doc_rank"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "doc_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "url": { "type": "string", "minLength": 1 },
+    "chunk_id": { "type": "string", "minLength": 1 },
+    "kind": { "type": "string", "minLength": 1 },
+    "path_hint": { "type": "string" },
+    "text": { "type": "string", "maxLength": 800 },
+    "score": { "type": "number" },
+    "source_rank": { "type": "integer", "minimum": 0 },
+    "doc_rank": { "type": "integer", "minimum": 0 }
+  }
+}

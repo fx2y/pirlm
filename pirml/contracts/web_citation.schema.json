@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebCitationRow",
+  "type": "object",
+  "required": ["url", "doc_sha256", "chunk_id", "quote", "retrieved_at"],
+  "additionalProperties": false,
+  "properties": {
+    "url": { "type": "string", "minLength": 1 },
+    "doc_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "chunk_id": { "type": "string", "minLength": 1 },
+    "quote": { "type": "string" },
+    "retrieved_at": { "type": "integer", "minimum": 0 }
+  }
+}
