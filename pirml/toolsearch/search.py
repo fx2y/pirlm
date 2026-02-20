@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from pirml.toolsearch.index import BM25Index, SearchHit, tokenize, tool_doc_fields
+from pirml.toolsearch.index import K_CAP, BM25Index, SearchHit, tokenize, tool_doc_fields
 from pirml.toolsearch.loader import catalog_hash
 
 if TYPE_CHECKING:
@@ -35,6 +35,9 @@ SEARCH_CACHE: dict[tuple[str, str, str, int], tuple[str, ...]] = {}
 INDEX_CACHE: dict[str, BM25Index] = {}
 REWRITE_CACHE: dict[str, dict[str, list[str]]] = {}
 
+# G.P2.6: regex-lookalike heuristic tokens (anchors, classes, alternation, quantifiers)
+_REGEX_TOKENS_RE = re.compile(r"[\^\$\[\]\(\)\|\*\+\?\.\\\{\}]")
+
 
 def _normalize_query(query: str) -> str:
     return query.strip().lower()
@@ -42,6 +45,11 @@ def _normalize_query(query: str) -> str:
 
 def _is_ci() -> bool:
     return os.getenv("CI", "0") in ("1", "true", "TRUE")
+
+
+def is_regex_query(query: str) -> bool:
+    """G.P2.6: Public predicate — true if query contains regex metacharacters."""
+    return bool(_REGEX_TOKENS_RE.search(query))
 
 
 def _rank_bm25_hits(hits: list[SearchHit]) -> list[str]:
@@ -54,6 +62,27 @@ def _apply_exact_name_boost(names: list[str], raw_query: str) -> list[str]:
     exact_names = [name for name in names if name.lower() == exact]
     other_names = [name for name in names if name.lower() != exact]
     return exact_names + other_names
+
+
+def _apply_namespace_boost(names: list[str], raw_query: str) -> list[str]:
+    """G.P2.7: Promote tools whose namespace prefix matches a dotted prefix in the query.
+    e.g. query 'svc.list_files' boosts tools with name starting 'svc.'.
+    """
+    if "." not in raw_query:
+        return names
+    ns = raw_query.split(".")[0].lower()
+    ns_prefix = ns + "."
+    in_ns = [n for n in names if n.lower().startswith(ns_prefix)]
+    out_ns = [n for n in names if not n.lower().startswith(ns_prefix)]
+    return in_ns + out_ns
+
+
+def to_tool_references(names: list[str]) -> list[dict[str, str]]:
+    """G.P2.8: Convert search result names to vendor-compatible tool_reference blocks.
+    Vendor contract: list of {type: 'tool_use', name: <str>}.
+    Cap enforced at K_CAP.
+    """
+    return [{"type": "tool_use", "name": n} for n in names[:K_CAP]]
 
 
 def clear_caches() -> None:
@@ -89,18 +118,17 @@ def search_with_cache(
     catalog: Mapping[str, ToolManifest],
     query: str,
     mode: str | None = None,
-    k: int = 5,
+    k: int = K_CAP,
     stability_threshold: float = 0.0,
 ) -> list[str]:
     """C4.T3: Search with cache and optional stability reuse."""
-    mode = mode or os.getenv("SEARCH_BACKEND", "bm25")
+    k = min(k, K_CAP)  # G.P1.7: enforce cap
+    mode = mode or (_resolve_auto_mode(query))
     key = cache_key(query, catalog, mode, k)
 
-    # Direct hit
     if key in SEARCH_CACHE:
         return list(SEARCH_CACHE[key])
 
-    # Stability reuse
     if stability_threshold > 0 and not _is_ci():
         for (prev_q, prev_cat_hash, prev_mode, prev_k), refs in SEARCH_CACHE.items():
             if (
@@ -111,10 +139,17 @@ def search_with_cache(
             ):
                 return list(refs)
 
-    # Miss: run actual search
     refs = search_tools(catalog, query, mode, k)
     SEARCH_CACHE[key] = tuple(refs)
     return list(refs)
+
+
+def _resolve_auto_mode(query: str) -> str:
+    """G.P2.6: Auto-detect mode from query shape; env var override always wins."""
+    env_mode = os.getenv("SEARCH_BACKEND")
+    if env_mode:
+        return env_mode
+    return "regex" if is_regex_query(query) else "bm25"
 
 
 # --- Backend Protocol & Implementations (C4.P3) ---
@@ -122,18 +157,20 @@ def search_with_cache(
 class SearchBackend(Protocol):
     """S.EXT1: Ext backend interface."""
 
-    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = 5) -> list[str]: ...
+    def search(
+        self, catalog: Mapping[str, ToolManifest], query: str, k: int = K_CAP
+    ) -> list[str]: ...
 
 
 class BM25Backend:
-    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = 5) -> list[str]:
+    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = K_CAP) -> list[str]:
         index = BM25Index(catalog)
         hits = index.score(query)
         return _rank_bm25_hits(hits)[:k]
 
 
 class RegexBackend:
-    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = 5) -> list[str]:
+    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = K_CAP) -> list[str]:
         return regex_search(catalog, query)[:k]
 
 
@@ -194,10 +231,16 @@ def search_tools(
     catalog: Mapping[str, ToolManifest],
     query: str,
     mode: str | None = None,
-    k: int = 5,
+    k: int = K_CAP,
 ) -> list[str]:
-    """C2.T4: Unified search entry point with deterministic ranking and alias rewrite."""
-    mode = mode or os.getenv("SEARCH_BACKEND", "bm25")
+    """C2.T4: Unified search entry point with deterministic ranking and alias rewrite.
+    G.P1.7: k capped at K_CAP.
+    G.P2.6: mode auto-detected from query shape via _resolve_auto_mode.
+    G.P2.7: namespace prefix boost applied after exact-name boost.
+    """
+    k = min(k, K_CAP)  # G.P1.7
+    mode = mode or _resolve_auto_mode(query)  # G.P2.6
+
     if not catalog:
         raise SearchError("missing_tool_definition", "Tool catalog is empty")
     if all(m.get("defer_loading", True) for m in catalog.values()):
@@ -215,7 +258,6 @@ def search_tools(
     backend = BACKENDS[mode]
     search_query = rewritten_query if mode == "bm25" else query
 
-    # For BM25, we use index caching
     if mode == "bm25":
         if cat_hash not in INDEX_CACHE:
             INDEX_CACHE[cat_hash] = BM25Index(catalog)
@@ -224,4 +266,8 @@ def search_tools(
         names = _rank_bm25_hits(hits)[:100]
     else:
         names = backend.search(catalog, search_query, k=100)
-    return _apply_exact_name_boost(names, query)[:k]
+
+    # G.P2.7: namespace prefix boost before final k-slice
+    names = _apply_namespace_boost(names, query)
+    names = _apply_exact_name_boost(names, query)
+    return names[:k]

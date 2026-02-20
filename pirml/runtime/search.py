@@ -1,6 +1,7 @@
 from pirml.toolsearch.search import (
     BACKENDS,
     INDEX_CACHE,
+    K_CAP,
     REWRITE_CACHE,
     SEARCH_CACHE,
     BM25Backend,
@@ -11,14 +12,17 @@ from pirml.toolsearch.search import (
     cache_key,
     clear_caches,
     get_catalog_hash,
+    is_regex_query,
     jaccard_similarity,
     regex_search,
     rewrite_query,
     search_tools,
     search_with_cache,
+    to_tool_references,
 )
 
 __all__ = [
+    "K_CAP",
     "SearchError",
     "SearchBackend",
     "BM25Backend",
@@ -26,6 +30,8 @@ __all__ = [
     "search_tools",
     "search_with_cache",
     "regex_search",
+    "to_tool_references",
+    "is_regex_query",
     "cache_key",
     "get_catalog_hash",
     "build_rewrite_map",

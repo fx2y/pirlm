@@ -8,6 +8,20 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 if TYPE_CHECKING:
     from pirml.contracts.schemas import ToolManifest
 
+# G.P1.7: vendored k-cap constant; all public APIs enforce this ceiling
+K_CAP: int = 5
+
+# G.P1.6: field weights applied by token repetition (cheap, stdlib-only)
+_FIELD_WEIGHTS: dict[str, int] = {
+    "name": 3,
+    "aliases": 2,
+    "verbs": 2,
+    "nouns": 2,
+    "tags": 2,
+    "description": 1,
+    "schema_props": 1,
+}
+
 
 def tokenize(text: str) -> list[str]:
     """C2.T1: Simple whitespace + punctuation tokenizer.
@@ -17,8 +31,7 @@ def tokenize(text: str) -> list[str]:
 
 
 def tool_doc_fields(m: ToolManifest) -> str:
-    """S.IDX1: Extract searchable text fields from manifest."""
-    # Use .get() safely for TypedDict
+    """S.IDX1: Extract searchable text fields from manifest (unweighted, for regex search)."""
     schema: dict[str, Any] = m.get("input_schema") or {}
     props: dict[str, Any] = schema.get("properties") or {}
     fields = [
@@ -36,6 +49,32 @@ def tool_doc_fields(m: ToolManifest) -> str:
     return " ".join(fields)
 
 
+def _weighted_tokens(m: ToolManifest) -> list[str]:
+    """G.P1.6: Produce weighted token stream by repeating segments per weight."""
+    schema: dict[str, Any] = m.get("input_schema") or {}
+    props: dict[str, Any] = schema.get("properties") or {}
+
+    schema_prop_text = " ".join(
+        k + " " + (cast(dict[str, Any], props.get(k) or {})).get("description", "")
+        for k in sorted(props)
+    )
+
+    segments: list[tuple[str, int]] = [
+        (m.get("name") or "", _FIELD_WEIGHTS["name"]),
+        (" ".join(m.get("aliases") or []), _FIELD_WEIGHTS["aliases"]),
+        (" ".join(m.get("verbs") or []), _FIELD_WEIGHTS["verbs"]),
+        (" ".join(m.get("nouns") or []), _FIELD_WEIGHTS["nouns"]),
+        (" ".join(m.get("tags") or []), _FIELD_WEIGHTS["tags"]),
+        (m.get("description") or "", _FIELD_WEIGHTS["description"]),
+        (schema_prop_text, _FIELD_WEIGHTS["schema_props"]),
+    ]
+    tokens: list[str] = []
+    for text, weight in segments:
+        seg_toks = tokenize(text)
+        tokens.extend(seg_toks * weight)
+    return tokens
+
+
 class SearchHit(NamedTuple):
     name: str
     score: float
@@ -45,13 +84,13 @@ class SearchHit(NamedTuple):
 
 
 class BM25Index:
-    """C2.T2: Deterministic BM25 scorer using stdlib."""
+    """C2.T2: Deterministic BM25 scorer using stdlib with field weighting (G.P1.6)."""
 
     def __init__(self, catalog: Mapping[str, ToolManifest], k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
         self.b = b
         self.catalog = catalog
-        # Keep doc order canonical regardless of input mapping insertion order.
+        # Canonical order regardless of mapping insertion order
         self.doc_names = sorted(catalog.keys())
         self.N = len(self.doc_names)
 
@@ -65,8 +104,8 @@ class BM25Index:
 
         for i, name in enumerate(self.doc_names):
             manifest = catalog[name]
-            text = tool_doc_fields(manifest)
-            tokens = tokenize(text)
+            # G.P1.6: use weighted token stream for TF/DF computation
+            tokens = _weighted_tokens(manifest)
             self.doc_lengths.append(len(tokens))
             self.doc_hot_ranks.append(0 if not manifest.get("defer_loading", True) else 1)
             schema_m: dict[str, Any] = manifest.get("input_schema") or {}
@@ -87,12 +126,11 @@ class BM25Index:
 
         self.avdl = sum(self.doc_lengths) / self.N if self.N > 0 else 0
 
-        # Precompute IDF
         for token, df in self.df.items():
             self.idf[token] = math.log(1 + (self.N - df + 0.5) / (df + 0.5))
 
     def score(self, query: str) -> list[SearchHit]:
-        """Rank all docs in catalog. Docs with no matching tokens get 0.0 score."""
+        """Rank all docs. Docs with no matching tokens get 0.0 score."""
         q_tokens = tokenize(query)
         score_by_doc: dict[int, float] = {}
         candidate_docs: set[int] = set()
@@ -109,7 +147,6 @@ class BM25Index:
                 tf = tf_map.get(token, 0)
                 if tf == 0:
                     continue
-                # S.IDX2: BM25 score formula
                 idf = self.idf[token]
                 score += idf * (
                     (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avdl))

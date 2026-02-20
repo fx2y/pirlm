@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 
 from pirml.contracts.schemas import ToolManifest
-from pirml.toolsearch.search import SearchError, search_tools
+from pirml.toolsearch.index import K_CAP
+from pirml.toolsearch.search import SearchError, is_regex_query, search_tools, to_tool_references
 
 
 class TestToolSearch(unittest.TestCase):
@@ -132,3 +133,70 @@ class TestToolSearch(unittest.TestCase):
         self.assertEqual(search_tools(self.catalog, "command", k=1), ["bash"])
         # Search for arg desc "identity" -> echo
         self.assertEqual(search_tools(self.catalog, "identity", k=1), ["echo"])
+
+    # G.P1.6: field weighting — name queries must rank the exact-named tool first
+    def test_field_weight_name_boost(self):
+        # 'echo' as query should surface echo first due to name*3 weighting
+        results = search_tools(self.catalog, "echo", k=2)
+        self.assertEqual(results[0], "echo")
+
+    # G.P1.7: k-cap enforced even when caller passes k > K_CAP
+    def test_k_cap_enforced(self):
+        results = search_tools(self.catalog, "file", k=K_CAP + 10)
+        self.assertLessEqual(len(results), K_CAP)
+
+    def test_k_cap_constant_value(self):
+        self.assertEqual(K_CAP, 5)
+
+    # G.P2.6: auto-mode detection from query shape
+    def test_auto_mode_regex_metachar(self):
+        self.assertTrue(is_regex_query(r"^echo$"))
+        self.assertTrue(is_regex_query("file.*"))
+        self.assertTrue(is_regex_query("[abc]"))
+        self.assertFalse(is_regex_query("read file"))
+        self.assertFalse(is_regex_query("list files in directory"))
+
+    def test_auto_mode_dispatches_regex_for_pattern(self):
+        # Pattern with ^ should auto-route to regex mode and match exactly
+        results = search_tools(self.catalog, r"^echo$")
+        self.assertEqual(results, ["echo"])
+
+    def test_auto_mode_dispatches_bm25_for_plain(self):
+        # No metacharacters → bm25 mode; should not raise
+        results = search_tools(self.catalog, "file read")
+        self.assertIsInstance(results, list)
+
+    # G.P2.7: namespace prefix boost
+    def test_namespace_boost_in_bets_catalog(self):
+        ns_catalog: dict[str, ToolManifest] = {
+            "svc.list_files": {
+                "name": "svc.list_files",
+                "description": "Lists files. Use for exploration. Do not use for deletion.",
+                "input_schema": {"type": "object"},
+                "defer_loading": False,
+            },
+            "core.list_items": {
+                "name": "core.list_items",
+                "description": "Lists items. Use for inspection. Do not use for deletion.",
+                "input_schema": {"type": "object"},
+                "defer_loading": False,
+            },
+        }
+        results = search_tools(ns_catalog, "svc.list", k=2)
+        self.assertEqual(results[0], "svc.list_files")
+
+    # G.P2.8: to_tool_references produces vendor-compatible blocks
+    def test_to_tool_references_shape(self):
+        refs = to_tool_references(["echo", "readfile", "bash"])
+        self.assertEqual(len(refs), 3)
+        for ref in refs:
+            self.assertEqual(ref["type"], "tool_use")
+            self.assertIn(ref["name"], ["echo", "readfile", "bash"])
+
+    def test_to_tool_references_cap(self):
+        long_names = [f"tool_{i}" for i in range(K_CAP + 5)]
+        refs = to_tool_references(long_names)
+        self.assertEqual(len(refs), K_CAP)
+
+    def test_to_tool_references_empty(self):
+        self.assertEqual(to_tool_references([]), [])
