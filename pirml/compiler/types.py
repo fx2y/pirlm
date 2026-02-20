@@ -8,6 +8,20 @@ from pirml.contracts.schemas import ErrorObject, ToolManifest
 CompileErr = ErrorObject
 
 
+class VerificationError(TypedDict, total=False):
+    code: str
+    msg: str
+    line: int
+    symbol: str
+
+
+class CompileErrorFile(TypedDict, total=False):
+    ok: bool
+    errors: List[VerificationError]
+    warnings: List[VerificationError]
+    stage: str
+
+
 class ContractBudget(TypedDict, total=False):
     max_calls: int
     max_parallel: int
@@ -40,4 +54,4 @@ class CompileInput(TypedDict, total=False):
 class CompileOutput(TypedDict, total=False):
     ok: bool
     artifacts: CompileArtifacts
-    error: CompileErr
+    error: CompileErr | CompileErrorFile

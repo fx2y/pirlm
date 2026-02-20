@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pirml.compiler.types import CompileContract, CompileErr
+from pirml.compiler.types import CompileContract, CompileErr, CompileErrorFile
 from pirml.runtime.rpc import canonical_json
 
 
@@ -24,7 +24,7 @@ def write_contract(path: Path, contract: CompileContract) -> None:
     path.write_text(canonical_json(contract), encoding="utf-8")
 
 
-def write_compile_error(path: Path, error: CompileErr) -> None:
+def write_compile_error(path: Path, error: CompileErr | CompileErrorFile) -> None:
     """Write compile_error.json using canonical JSON."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(canonical_json(error), encoding="utf-8")

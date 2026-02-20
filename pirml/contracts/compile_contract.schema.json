@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CompileContract",
+  "type": "object",
+  "required": ["tool_deps", "io_schema", "budgets", "assertions"],
+  "additionalProperties": false,
+  "properties": {
+    "tool_deps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "io_schema": {
+      "type": "object",
+      "required": ["trace_ptr", "final_schema", "citations_schema"],
+      "additionalProperties": false,
+      "properties": {
+        "trace_ptr": { "type": "string" },
+        "final_schema": { "type": "object" },
+        "citations_schema": { "type": "object" }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "required": ["max_calls", "max_parallel", "max_bytes_in", "max_bytes_out", "timeout_s"],
+      "additionalProperties": false,
+      "properties": {
+        "max_calls": { "type": "integer", "minimum": 1 },
+        "max_parallel": { "type": "integer", "minimum": 1 },
+        "max_bytes_in": { "type": "integer", "minimum": 1 },
+        "max_bytes_out": { "type": "integer", "minimum": 1 },
+        "timeout_s": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "assertions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -12,9 +12,11 @@ from pirml.compiler.types import (
     CompileArtifacts,
     CompileContract,
     CompileErr,
+    CompileErrorFile,
     CompileOutput,
     ContractBudget,
 )
+from pirml.compiler.verify import verify_compile_output
 from pirml.contracts.schemas import ToolManifest
 from pirml.toolsearch.loader import load_catalog, load_selected
 from pirml.toolsearch.render import render_selected_tools
@@ -85,15 +87,23 @@ def compile_task(
         # 4. Extract blocks
         prog_src, contract_src = extract_blocks(raw_text)
 
-        # Parse contract JSON
-        try:
-            contract_data = json.loads(contract_src)
-            # typed cast/wrap
-            contract = cast_contract(contract_data)
-        except json.JSONDecodeError as e:
-            raise ExtractionError("invalid_contract_json", str(e))
+        # 5. Verify (Cycle C2)
+        tool_names = [t["name"] for t in tools]
+        contract, errors = verify_compile_output(prog_src, contract_src, tool_names)
 
-        # 5. Write artifacts
+        if errors:
+            err_file: CompileErrorFile = {
+                "ok": False,
+                "errors": cast(Any, errors),
+                "warnings": [],
+                "stage": "verify",
+            }
+            write_compile_error(out_dir / "compile_error.json", err_file)
+            return {"ok": False, "error": err_file}
+
+        assert contract is not None  # if no errors, contract must be valid
+
+        # 6. Write artifacts
         write_prog(out_dir / "prog.py", prog_src)
         write_contract(out_dir / "contract.json", contract)
 
@@ -112,17 +122,3 @@ def compile_task(
         err: CompileErr = {"type": "internal_error", "msg": str(e), "retryable": False}
         write_compile_error(out_dir / "compile_error.json", err)
         return {"ok": False, "error": err}
-
-
-def cast_contract(data: Any) -> CompileContract:
-    """Helper to ensure CompileContract shape."""
-    # In Cycle C2 we'll have a strict verifier.
-    # For C1 we just ensure basic keys for the TypedDict.
-    res: CompileContract = {
-        "tool_deps": data.get("tool_deps", []),
-        "io_schema": data.get("io_schema", {}),
-        "budgets": data.get("budgets", {}),
-        "assertions": data.get("assertions", []),
-        "trace_ptr": data.get("trace_ptr", "trace.ndjson"),
-    }
-    return res

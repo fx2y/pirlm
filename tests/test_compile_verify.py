@@ -4,6 +4,8 @@ import unittest
 from pathlib import Path
 
 from tests.compile_manifest import VERIFY_RED_FAILS, load_fixture_cases
+from pirml.compiler.extract import extract_blocks
+from pirml.compiler.verify import verify_compile_output
 
 
 class TestCompileVerifyManifest(unittest.TestCase):
@@ -31,6 +33,31 @@ class TestCompileVerifyManifest(unittest.TestCase):
             self.assertIn(case.expect, {"pass", "fail"})
             if case.expect == "fail":
                 self.assertTrue(case.expected_fail_id)
+
+    def test_verify_corpus_cases(self) -> None:
+        cases = load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
+        # We test both 'extract' (which should pass verification if not intentional fail)
+        # and 'verify' stages.
+        for case in cases:
+            if case.stage not in ("extract", "verify"):
+                continue
+            
+            # If it failed extraction, skip here (that's test_compile_extract's job)
+            try:
+                prog_src, contract_src = extract_blocks(case.raw_model_text)
+            except Exception:
+                continue
+
+            contract, errors = verify_compile_output(prog_src, contract_src, list(case.tools_topk))
+            
+            if case.expect == "pass":
+                self.assertFalse(errors, f"Case {case.id} expected pass but got errors: {errors}")
+                self.assertIsNotNone(contract)
+            else:
+                # If it's a verify stage fail, it must have errors
+                if case.stage == "verify":
+                    self.assertTrue(errors, f"Case {case.id} expected fail but got no errors")
+                    # We could also check error codes if we mapped expected_fail_id to codes
 
 
 if __name__ == "__main__":
