@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "invalid_final_emit",
+      "line": null,
+      "msg": "Exactly one send_final() required, found 2",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}

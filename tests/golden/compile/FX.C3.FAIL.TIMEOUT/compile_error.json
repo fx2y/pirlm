@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "FAIL_B3_TIMEOUT",
+      "line": null,
+      "msg": "Smoke test timed out after 1s",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "smoke",
+  "warnings": []
+}

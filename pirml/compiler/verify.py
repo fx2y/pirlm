@@ -167,24 +167,32 @@ class CompileVerifier:
         tool_call_info: list[dict[str, Any]] = []
         for n in ast.walk(tree):
             # We look for 'await TOOL_X(...)'
-            if isinstance(n, ast.Await) and isinstance(n.value, ast.Call) and \
-               isinstance(n.value.func, ast.Name) and n.value.func.id.startswith("TOOL_"):
-                
+            if (
+                isinstance(n, ast.Await)
+                and isinstance(n.value, ast.Call)
+                and isinstance(n.value.func, ast.Name)
+                and n.value.func.id.startswith("TOOL_")
+            ):
                 # Check if it's assigned to a variable: x = await ...
                 target_var: str | None = None
                 parent = self._get_parent(tree, n)
-                if isinstance(parent, ast.Assign) and len(parent.targets) == 1 and \
-                   isinstance(parent.targets[0], ast.Name):
+                if (
+                    isinstance(parent, ast.Assign)
+                    and len(parent.targets) == 1
+                    and isinstance(parent.targets[0], ast.Name)
+                ):
                     target_var = parent.targets[0].id
-                
-                tool_call_info.append({
-                    "node": n,
-                    "tool": n.value.func.id,
-                    "target": target_var,
-                    "args": n.value.args,
-                    "keywords": n.value.keywords,
-                    "lineno": n.lineno
-                })
+
+                tool_call_info.append(
+                    {
+                        "node": n,
+                        "tool": n.value.func.id,
+                        "target": target_var,
+                        "args": n.value.args,
+                        "keywords": n.value.keywords,
+                        "lineno": n.lineno,
+                    }
+                )
 
         # 2. Check for dependencies: is result of TOOL_A used in TOOL_B?
         def is_dependent(call_b: dict[str, Any], all_calls: list[dict[str, Any]]) -> bool:
@@ -192,7 +200,7 @@ class CompileVerifier:
             for call_a in all_calls:
                 if call_a == call_b or not call_a["target"]:
                     continue
-                
+
                 # Search for call_a["target"] in call_b's arguments
                 for arg in call_b["args"]:
                     for sub in ast.walk(arg):
@@ -208,11 +216,17 @@ class CompileVerifier:
         # If they are awaited serially and no gather is used, they might violate policy.
         independent_serial_calls: list[dict[str, Any]] = []
         for i, call in enumerate(tool_call_info):
-            if not is_dependent(call, tool_call_info[:i]) and i > 0 and \
-               not any(is_dependent(call, tool_call_info[:i+1]) for call in tool_call_info[i:i+1]):
-                 # If it's awaited in the main body (not inside a loop/branch that depends on previous)
-                 # For simplicity, if no gather is used at all, we flag it.
-                 independent_serial_calls.append(call)
+            if (
+                not is_dependent(call, tool_call_info[:i])
+                and i > 0
+                and not any(
+                    is_dependent(call, tool_call_info[: i + 1])
+                    for call in tool_call_info[i : i + 1]
+                )
+            ):
+                # If it's awaited in the main body (not inside a loop/branch that depends on previous)
+                # For simplicity, if no gather is used at all, we flag it.
+                independent_serial_calls.append(call)
 
         if len(tool_call_info) > 1 and not uses_gather and independent_serial_calls:
             # Check for SERIAL_OK (S.AST7)
@@ -227,7 +241,7 @@ class CompileVerifier:
                             if reason in ALLOW_SERIAL_REASONS:
                                 found_valid_reason = True
                                 break
-            
+
             if not found_valid_reason:
                 if "SERIAL_OK:" in prog_src:
                     self.add_error(

@@ -49,7 +49,7 @@ def assemble_tools_topk(
         name = tool.get("name", "unknown")
         has_examples = bool(tool.get("input_examples"))
         has_aliases = bool(tool.get("aliases"))
-        
+
         schema = tool.get("input_schema", {})
         props = schema.get("properties", {})
         required = schema.get("required", [])
@@ -113,7 +113,7 @@ def compile_task(
 
         # C4.P3: Repair-once (Bet-A5)
         if errors:
-            can_repair = all(is_trivial_repair(e["code"]) for e in errors)
+            can_repair = all(is_trivial_repair(e.get("code", "")) for e in errors)
             if can_repair:
                 prog_src, contract_src, repaired = repair_once(prog_src, contract_src, errors)
                 if repaired:
@@ -122,8 +122,10 @@ def compile_task(
             else:
                 # Add a marker that repair was declined for nontrivial errors
                 for e in errors:
-                    if not is_trivial_repair(e["code"]):
-                        e["msg"] = f"[repair_declined] {e['msg']}"
+                    code = e.get("code", "")
+                    if not is_trivial_repair(code):
+                        msg = e.get("msg", "Unknown error")
+                        e["msg"] = f"[repair_declined] {msg}"
 
         if errors:
             err_file: CompileErrorFile = {

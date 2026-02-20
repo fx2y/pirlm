@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "FAIL_B3_MULTI_FINAL",
+      "line": null,
+      "msg": "Multiple final frames in smoke stdout",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "smoke",
+  "warnings": []
+}

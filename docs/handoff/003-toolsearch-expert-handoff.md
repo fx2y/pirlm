@@ -37,7 +37,7 @@ cat out/toolsearch_bench.canonical.json
 ### QA: Invariant Stress-Test
 ```bash
 # 1. Total-order stability check
-python -c "from pirml.runtime.load import load_catalog; from pirml.runtime.search import search_tools; cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True); r1=search_tools(cat,'file',k=3); r2=search_tools(cat,'file',k=3); assert r1==r2"
+python -c "from pirml.toolsearch.loader import load_catalog; from pirml.toolsearch.search import search_tools; cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True); r1=search_tools(cat,'file',k=3); r2=search_tools(cat,'file',k=3); assert r1==r2"
 # 2. Strict loader duplicate check
 python -m unittest -q tests.test_toolsearch_lint.TestToolSearchLint.test_strict_loader
 # 3. Regex failure taxonomy check
@@ -75,8 +75,8 @@ python -m scripts.tool_manifest_lint --tools-dir tools
 
 ### Step 3: Search Integration
 ```python
-from pirml.runtime.load import load_catalog, load_selected
-from pirml.runtime.search import search_tools
+from pirml.toolsearch.loader import load_catalog, load_selected
+from pirml.toolsearch.search import search_tools
 from pirml.toolsearch.render import render_selected_tools
 
 cat = load_catalog("tools", strict=True)

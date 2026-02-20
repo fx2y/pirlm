@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "ast_import_denied",
+      "line": 2,
+      "msg": "[repair_declined] Import os not allowed",
+      "symbol": "os"
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}

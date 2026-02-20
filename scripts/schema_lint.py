@@ -68,10 +68,11 @@ def validate_result(result: Any, index: int) -> list[str]:
     return errors
 
 
-def validate_contract(contract: Any, path: str) -> list[str]:
+def validate_contract(contract_raw: Any, path: str) -> list[str]:
     errors: list[str] = []
-    if not isinstance(contract, dict):
+    if not isinstance(contract_raw, dict):
         return [f"{path} must be an object"]
+    contract = cast(dict[str, Any], contract_raw)
 
     # Required: ["tool_deps", "io_schema", "budgets", "assertions"]
     for req in ["tool_deps", "io_schema", "budgets", "assertions"]:
@@ -79,16 +80,20 @@ def validate_contract(contract: Any, path: str) -> list[str]:
             errors.append(f"{path} missing required '{req}'")
 
     if "tool_deps" in contract:
-        if not isinstance(contract["tool_deps"], list):
+        tool_deps = contract["tool_deps"]
+        if not isinstance(tool_deps, list):
             errors.append(f"{path}.tool_deps must be a list")
-        elif not all(isinstance(x, str) for x in contract["tool_deps"]):
-            errors.append(f"{path}.tool_deps must be a list of strings")
+        else:
+            for x in cast(list[Any], tool_deps):
+                if not isinstance(x, str):
+                    errors.append(f"{path}.tool_deps must be a list of strings")
 
     if "io_schema" in contract:
-        io = contract["io_schema"]
-        if not isinstance(io, dict):
+        io_raw = contract["io_schema"]
+        if not isinstance(io_raw, dict):
             errors.append(f"{path}.io_schema must be an object")
         else:
+            io = cast(dict[str, Any], io_raw)
             for req in ["trace_ptr", "final_schema", "citations_schema"]:
                 if req not in io:
                     errors.append(f"{path}.io_schema missing required '{req}'")
@@ -96,10 +101,11 @@ def validate_contract(contract: Any, path: str) -> list[str]:
                 errors.append(f"{path}.io_schema.trace_ptr must be a string")
 
     if "budgets" in contract:
-        budgets = contract["budgets"]
-        if not isinstance(budgets, dict):
+        budgets_raw = contract["budgets"]
+        if not isinstance(budgets_raw, dict):
             errors.append(f"{path}.budgets must be an object")
         else:
+            budgets = cast(dict[str, Any], budgets_raw)
             fields = ["max_calls", "max_parallel", "max_bytes_in", "max_bytes_out", "timeout_s"]
             for f in fields:
                 if f not in budgets:
@@ -113,6 +119,60 @@ def validate_contract(contract: Any, path: str) -> list[str]:
     return errors
 
 
+def validate_verification_error(error: Any, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(error, dict):
+        return [f"{path} must be an object"]
+
+    # Required: ["code", "msg"]
+    for req in ["code", "msg"]:
+        if req not in error:
+            errors.append(f"{path} missing required '{req}'")
+
+    # Additional properties
+    allowed = {"code", "msg", "line", "symbol"}
+    for k in cast(Mapping[str, Any], error):
+        if k not in allowed:
+            errors.append(f"{path} has unexpected field '{k}'")
+
+    return errors
+
+
+def validate_compile_error(ce: Any, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(ce, dict):
+        return [f"{path} must be an object"]
+
+    # Required: ["ok", "errors", "warnings", "stage"]
+    for req in ["ok", "errors", "warnings", "stage"]:
+        if req not in ce:
+            errors.append(f"{path} missing required '{req}'")
+
+    if "ok" in ce and ce["ok"] is not False:
+        errors.append(f"{path}.ok must be false")
+
+    if "stage" in ce and not isinstance(ce["stage"], str):
+        errors.append(f"{path}.stage must be a string")
+
+    if "errors" in ce:
+        ce_errors = cast(Any, ce["errors"])
+        if not isinstance(ce_errors, list):
+            errors.append(f"{path}.errors must be a list")
+        else:
+            for i, err in enumerate(cast(list[Any], ce_errors)):
+                errors.extend(validate_verification_error(err, f"{path}.errors[{i}]"))
+
+    if "warnings" in ce:
+        ce_warnings = cast(Any, ce["warnings"])
+        if not isinstance(ce_warnings, list):
+            errors.append(f"{path}.warnings must be a list")
+        else:
+            for i, err in enumerate(cast(list[Any], ce_warnings)):
+                errors.extend(validate_verification_error(err, f"{path}.warnings[{i}]"))
+
+    return errors
+
+
 def main() -> int:
     exit_code = 0
 
@@ -121,7 +181,7 @@ def main() -> int:
     if final_path.exists():
         try:
             final = json.loads(final_path.read_text())
-            errors = []
+            errors: list[str] = []
             if not isinstance(final, dict):
                 errors.append("Root must be an object")
             else:
@@ -164,6 +224,29 @@ def main() -> int:
                 print(f"Verified {contract_path}")
         except Exception as exc:
             print(f"Error reading {contract_path}: {exc}", file=sys.stderr)
+            exit_code = 1
+
+    # 3. Validate all compile_error.json in out/
+    for ce_path in Path("out").rglob("compile_error.json"):
+        try:
+            ce = json.loads(ce_path.read_text())
+            # compile_error can be either ErrorObject (CompileErr) or CompileErrorFile
+            # We check if it has 'stage' to identify CompileErrorFile
+            errors: list[str] = []
+            if "stage" in ce:
+                errors = validate_compile_error(ce, str(ce_path))
+            else:
+                errors = validate_error(ce, str(ce_path))
+
+            if errors:
+                print(f"Schema validation failed for {ce_path}:", file=sys.stderr)
+                for err in errors:
+                    print(f"  - {err}", file=sys.stderr)
+                exit_code = 1
+            else:
+                print(f"Verified {ce_path}")
+        except Exception as exc:
+            print(f"Error reading {ce_path}: {exc}", file=sys.stderr)
             exit_code = 1
 
     return exit_code

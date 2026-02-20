@@ -271,3 +271,29 @@ def search_tools(
     names = _apply_namespace_boost(names, query)
     names = _apply_exact_name_boost(names, query)
     return names[:k]
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+    import sys
+    from pathlib import Path
+
+    from pirml.toolsearch.loader import load_catalog
+
+    parser = argparse.ArgumentParser(description="PIRML ToolSearch CLI")
+    parser.add_argument("--query", required=True, help="Search query")
+    parser.add_argument("--k", type=int, default=K_CAP, help="Top-K results")
+    parser.add_argument(
+        "--tools-dir", default="tests/fixtures/toolsearch/catalog", help="Tools directory"
+    )
+    parser.add_argument("--mode", choices=["bm25", "regex"], help="Search mode")
+    args = parser.parse_args()
+
+    try:
+        catalog = load_catalog(Path(args.tools_dir), strict=True)
+        results = search_tools(catalog, args.query, mode=args.mode, k=args.k)
+        print(json.dumps(results, indent=2))
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)

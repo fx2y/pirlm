@@ -42,7 +42,7 @@ def repair_once(
                     data["io_schema"] = {
                         "trace_ptr": "trace.ndjson",
                         "final_schema": data.pop("final_schema"),
-                        "citations_schema": {}
+                        "citations_schema": {},
                     }
                     io_repaired = True
 
@@ -65,7 +65,7 @@ def repair_once(
                                 "max_parallel": 10,
                                 "max_bytes_in": 5000000,
                                 "max_bytes_out": 200000,
-                                "timeout_s": 60
+                                "timeout_s": 60,
                             }
                         elif k in ("assertions", "tool_deps"):
                             data[k] = []
@@ -73,11 +73,11 @@ def repair_once(
 
                 if io_repaired or root_repaired:
                     from pirml.runtime.rpc import canonical_json
+
                     repaired_contract = canonical_json(data)
                     any_repaired = True
             except Exception:
                 pass
-
 
         # 4. TOOL_ dot normalization (already handled in verifier/harness, but maybe in contract too)
 
@@ -89,7 +89,7 @@ def is_trivial_repair(code: str) -> bool:
     trivial = {
         "contract_missing_keys",
         "invalid_io_schema",
-        "invalid_final_emit", # Maybe? No.
+        "invalid_final_emit",  # Maybe? No.
     }
     # Nontrivial: ast_import_denied, banned_call, tool_hallucination, etc.
     nontrivial = {
@@ -97,6 +97,6 @@ def is_trivial_repair(code: str) -> bool:
         "banned_call",
         "unknown_tool_deps",
         "syntax_error",
-        "missing_async_main"
+        "missing_async_main",
     }
     return code in trivial and code not in nontrivial

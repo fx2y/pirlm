@@ -37,8 +37,8 @@ Model emits `prog.py` (logic) and `contract.json` (schema).
 ### 2.1 Tool Discovery (BM25 Pushdown)
 **HC3:** Avoid 100k-token catalogs.
 ```python
-# runtime/index.py
-def search_tools(query: str, top_k=5):
+# pirml/toolsearch/search.py
+def search_tools(catalog: dict, query: str, k=5):
     # BM25 + Regex over tools/*.json
     # Return Top-K manifests for compiler prompt
 ```
@@ -48,20 +48,23 @@ def search_tools(query: str, top_k=5):
 ```python
 # Example prog.py emitted by model
 import asyncio
-from pirml.runtime import call_tool, write_artifact
+from pirml.runtime.rpc import send_final
 
 async def main():
-    # 1. Parallel Search
+    # 1. Parallel Search via TOOL_* wrappers (generated)
     results = await asyncio.gather(
-        call_tool("web.search", q="X"),
-        call_tool("web.search", q="Y")
+        TOOL_web_search({"q": "X"}),
+        TOOL_web_search({"q": "Y"})
     )
     # 2. Dynamic Filtering (ETL)
     # Filter 10MB HTML -> 10KB JSON snippets
-    distill = [extract_tables(r) for r in results]
+    distill = [r.get("text")[:1000] for r in results if r.get("ok")]
     
-    # 3. Final Distill
-    return {"data": distill, "citations": [...]}
+    # 3. Final Distill via RPC send_final
+    send_final(True, {"data": distill, "citations": []})
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ### 2.3 RLM Recursion (Artifact Slicing)

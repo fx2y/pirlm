@@ -33,7 +33,7 @@ cat out/toolsearch_bench.canonical.json
 cat out/toolsearch_tokens.json
 
 # C) Selection -> hydration -> render (client-side)
-python -c "import json;from pirml.runtime.load import load_catalog,load_selected;from pirml.runtime.search import search_tools;from pirml.toolsearch.render import render_selected_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);refs=search_tools(cat,'list files',k=3);sel=load_selected(refs[:2],'tests/fixtures/toolsearch/catalog');print(json.dumps({'refs':refs,'render':render_selected_tools(sel)},sort_keys=True,indent=2))"
+python -c "import json;from pirml.toolsearch.loader import load_catalog,load_selected;from pirml.toolsearch.search import search_tools;from pirml.toolsearch.render import render_selected_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);refs=search_tools(cat,'list files',k=3);sel=load_selected(refs[:2],'tests/fixtures/toolsearch/catalog');print(json.dumps({'refs':refs,'render':render_selected_tools(sel)},sort_keys=True,indent=2))"
 
 # D) Live runtime integration
 python -m pirml --prog tests/prog_ok.py --out-dir "$BASE/live" > "$BASE/live.stdout.ndjson"
@@ -70,7 +70,7 @@ Goal: prove value without substrate risk.
 python -m scripts.tool_search_bench
 cat out/toolsearch_bench.canonical.json
 cat out/toolsearch_tokens.json
-python -c "import json;from pirml.runtime.load import load_catalog,load_selected;from pirml.runtime.search import search_tools;from pirml.toolsearch.render import render_selected_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);refs=search_tools(cat,'list files',k=3);print(json.dumps({'refs':refs,'render':render_selected_tools(load_selected(refs[:2],'tests/fixtures/toolsearch/catalog'))},sort_keys=True,indent=2))"
+python -c "import json;from pirml.toolsearch.loader import load_catalog,load_selected;from pirml.toolsearch.search import search_tools;from pirml.toolsearch.render import render_selected_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);refs=search_tools(cat,'list files',k=3);print(json.dumps({'refs':refs,'render':render_selected_tools(load_selected(refs[:2],'tests/fixtures/toolsearch/catalog'))},sort_keys=True,indent=2))"
 python -m pirml --prog tests/prog_ok.py --out-dir out/showcase/003/po/live > out/showcase/003/po/live.stdout.ndjson
 PIRML_BLOCK_TOOLS=1 python -m pirml --prog tests/prog_ok.py --replay out/showcase/003/po/live/trace.ndjson --out-dir out/showcase/003/po/replay > out/showcase/003/po/replay.stdout.ndjson
 sha256sum out/showcase/003/po/live/final.json out/showcase/003/po/replay/final.json
@@ -113,7 +113,7 @@ sha256sum "$BASE/parallel/final.json" "$BASE/parallel-replay/final.json"
 python -m pirml --prog tests/prog_large.py --max-line-bytes 1024 --out-dir "$BASE/trunc" > "$BASE/trunc.stdout.ndjson"
 rg -n '"truncated":true|"truncated_bytes":' "$BASE/trunc/trace.ndjson"
 tail -n 2 "$BASE/parallel/metrics.csv"
-python -c "from pirml.runtime.load import load_catalog;from pirml.runtime.search import search_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);runs=[search_tools(cat,'read content',k=3) for _ in range(3)];print(runs);assert runs[0]==runs[1]==runs[2]"
+python -c "from pirml.toolsearch.loader import load_catalog;from pirml.toolsearch.search import search_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);runs=[search_tools(cat,'read content',k=3) for _ in range(3)];print(runs);assert runs[0]==runs[1]==runs[2]"
 ```
 
 Interpretation:
@@ -144,7 +144,7 @@ python -m scripts.tool_search_bench && cat out/toolsearch_bench.canonical.json &
 
 S5. Deterministic selection smoke:
 ```bash
-python -c "from pirml.runtime.load import load_catalog;from pirml.runtime.search import search_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);print([search_tools(cat,'list files',k=3) for _ in range(3)])"
+python -c "from pirml.toolsearch.loader import load_catalog;from pirml.toolsearch.search import search_tools;cat=load_catalog('tests/fixtures/toolsearch/catalog',strict=True);print([search_tools(cat,'list files',k=3) for _ in range(3)])"
 ```
 
 S6. Invalid regex taxonomy:

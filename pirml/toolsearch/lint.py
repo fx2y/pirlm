@@ -131,8 +131,8 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
                     # G.P0.2: basic validation of example vs schema
                     ex_dict = cast(dict[str, Any], ex)
                     if isinstance(schema, dict):
-                        props = cast(dict[str, Any], schema.get("properties", {}))
-                        required = cast(list[str], schema.get("required", []))
+                        props = cast(dict[str, Any], schema.get("properties", {}))  # type: ignore[reportUnknownMemberType]
+                        required = cast(list[str], schema.get("required", []))  # type: ignore[reportUnknownMemberType]
 
                         # Check for unknown properties
                         for arg in ex_dict:
@@ -160,15 +160,24 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
                         for arg, val in ex_dict.items():
                             if arg in props:
                                 p_def = props[arg]
-                                p_type = p_def.get("type")
-                                if p_type:
+                                p_type = p_def.get("type")  # type: ignore[reportUnknownMemberType, reportUnknownVariableType]
+                                if isinstance(p_type, str):
                                     valid = True
-                                    if (p_type == "string" and not isinstance(val, str)) or \
-                                       (p_type == "number" and not isinstance(val, (int, float))) or \
-                                       (p_type == "integer" and not (isinstance(val, int) and not isinstance(val, bool))) or \
-                                       (p_type == "boolean" and not isinstance(val, bool)) or \
-                                       (p_type == "object" and not isinstance(val, dict)) or \
-                                       (p_type == "array" and not isinstance(val, list)):
+                                    if (
+                                        (p_type == "string" and not isinstance(val, str))
+                                        or (
+                                            p_type == "number" and not isinstance(val, (int, float))
+                                        )
+                                        or (
+                                            p_type == "integer"
+                                            and not (
+                                                isinstance(val, int) and not isinstance(val, bool)
+                                            )
+                                        )
+                                        or (p_type == "boolean" and not isinstance(val, bool))
+                                        or (p_type == "object" and not isinstance(val, dict))
+                                        or (p_type == "array" and not isinstance(val, list))
+                                    ):
                                         valid = False
 
                                     if not valid:

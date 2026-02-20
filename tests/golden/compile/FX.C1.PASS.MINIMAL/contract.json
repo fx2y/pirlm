@@ -1,0 +1,22 @@
+{
+  "assertions": [
+    "single_final_emit"
+  ],
+  "budgets": {
+    "max_bytes_in": 128,
+    "max_bytes_out": 128,
+    "max_calls": 1,
+    "max_parallel": 1,
+    "timeout_s": 5
+  },
+  "io_schema": {
+    "citations_schema": {
+      "type": "array"
+    },
+    "final_schema": {
+      "type": "object"
+    },
+    "trace_ptr": "trace.ndjson"
+  },
+  "tool_deps": []
+}

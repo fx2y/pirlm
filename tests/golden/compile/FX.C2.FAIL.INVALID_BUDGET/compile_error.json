@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "invalid_budget",
+      "line": null,
+      "msg": "[repair_declined] Budget max_calls must be positive int",
+      "symbol": "max_calls"
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}

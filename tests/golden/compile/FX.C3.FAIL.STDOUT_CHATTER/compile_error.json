@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "FAIL_B3_STDOUT_CHATTER",
+      "line": null,
+      "msg": "Non-JSON chatter in smoke stdout",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "smoke",
+  "warnings": []
+}

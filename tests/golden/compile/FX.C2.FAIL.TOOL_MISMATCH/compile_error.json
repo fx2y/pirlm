@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "tool_dep_mismatch",
+      "line": null,
+      "msg": "[repair_declined] missing in contract: ['pirml_echo']",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}

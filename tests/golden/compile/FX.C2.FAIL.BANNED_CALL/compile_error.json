@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "banned_call",
+      "line": 4,
+      "msg": "[repair_declined] Call to eval is banned",
+      "symbol": "eval"
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}

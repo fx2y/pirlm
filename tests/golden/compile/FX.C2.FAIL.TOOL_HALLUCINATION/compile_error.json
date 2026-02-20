@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "code": "unknown_tool_deps",
+      "line": null,
+      "msg": "[repair_declined] Unknown tools: ['nonexistent']",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "verify",
+  "warnings": []
+}
