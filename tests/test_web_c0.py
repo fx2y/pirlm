@@ -19,7 +19,7 @@ def _assert_runtime_tool_surface(tool_names: set[str]) -> None:
         raise AssertionError(f"runtime tool surface drifted: {tool_names} != {expected}")
 
 
-class WebC0Tests(unittest.TestCase):
+class WebC0Tests(unittest.IsolatedAsyncioTestCase):
     def test_runtime_tool_surface_remains_frozen(self) -> None:
         registry = default_registry()
         tools_map = cast(dict[str, Any], vars(registry).get("_tools", {}))
@@ -57,9 +57,9 @@ class WebC0Tests(unittest.TestCase):
         self.assertEqual(serialized_runs[0], serialized_runs[1])
         self.assertEqual(serialized_runs[1], serialized_runs[2])
 
-    def test_fixture_fetcher_loads_local_artifacts_only(self) -> None:
+    async def test_fixture_fetcher_loads_local_artifacts_only(self) -> None:
         fetcher = load_fixture_fetcher(Path("tests/fixtures/web/responses.json"))
-        row = fetcher.fetch("https://example.com/docs/page?utm_medium=x&b=2&a=1#frag")
+        row = await fetcher.fetch("https://example.com/docs/page?utm_medium=x&b=2&a=1#frag")
 
         self.assertEqual(row["url"], "https://example.com/docs/page?a=1&b=2")
         self.assertEqual(row["final_url"], "https://example.com/docs/page?a=1&b=2")
@@ -68,10 +68,10 @@ class WebC0Tests(unittest.TestCase):
         self.assertGreater(row["bytes"], 0)
         self.assertEqual(len(row["body_sha256"]), 64)
 
-    def test_fixture_fetcher_unknown_url_is_typed_failure(self) -> None:
+    async def test_fixture_fetcher_unknown_url_is_typed_failure(self) -> None:
         fetcher = load_fixture_fetcher(Path("tests/fixtures/web/responses.json"))
         with self.assertRaises(KeyError):
-            fetcher.fetch("https://example.com/missing")
+            await fetcher.fetch("https://example.com/missing")
 
     def test_rank_and_diversify_is_stable(self) -> None:
         rows: list[SerpRow] = [

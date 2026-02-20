@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WebTraceFrame",
+  "type": "object",
+  "required": ["op", "ts", "seq", "ms"],
+  "properties": {
+    "op": { "enum": ["search_call", "search_result", "fetch_call", "fetch_result"] },
+    "ts": { "type": "integer" },
+    "seq": { "type": "integer" },
+    "ms": { "type": "integer" },
+    "q": { "type": "string" },
+    "url": { "type": "string" },
+    "provider": { "type": "string" },
+    "status": { "type": "integer" },
+    "bytes": { "type": "integer" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "cache_hit": { "type": "boolean" },
+    "error": { "type": "string" }
+  },
+  "additionalProperties": false
+}

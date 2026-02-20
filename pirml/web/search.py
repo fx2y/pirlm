@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import time
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from .trace import WebTracer
 from .types import SerpRow
 from .urlnorm import normalize_url
 
 
 class Provider(Protocol):
-    def search(self, query: str) -> list[SerpRow]: ...
+    async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]: ...
 
 
 def rank_and_diversify(
@@ -18,9 +20,12 @@ def rank_and_diversify(
     *,
     k: int,
     per_domain_cap: int = 2,
+    tracer: WebTracer | None = None,
 ) -> list[SerpRow]:
     """Deterministic SERP normalization with URL dedup + domain cap."""
+    start_ms = int(time.time() * 1000)
     unique: dict[str, SerpRow] = {}
+    # Use (rank, source, url) as tie-break
     for row in sorted(rows, key=lambda item: (item["rank"], item["source"], item["url"])):
         key = normalize_url(row["url"])
         if key in unique:
@@ -44,7 +49,28 @@ def rank_and_diversify(
         selected.append(row)
         if len(selected) >= k:
             break
+
+    if tracer:
+        tracer.emit(
+            "search_result",
+            status=200,
+            bytes=0,  # Not applicable here
+            ms=int(time.time() * 1000) - start_ms,
+        )
     return selected
 
 
-__all__ = ["Provider", "rank_and_diversify"]
+class MockProvider:
+    def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
+        self._responses = responses
+
+    async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]:
+        if tracer:
+            tracer.emit("search_call", q=query, provider="mock")
+        rows = self._responses.get(query, [])
+        if tracer:
+            tracer.emit("search_result", status=200, ms=1)
+        return rows
+
+
+__all__ = ["MockProvider", "Provider", "rank_and_diversify"]

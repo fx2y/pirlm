@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-from . import cache, cite, contracts, etl, eval, fetch, pipeline, search, types, urlnorm
+from . import (
+    cache,
+    cite,
+    contracts,
+    etl,
+    eval,
+    fetch,
+    pipeline,
+    search,
+    trace,
+    types,
+    urlnorm,
+)
 
 __all__ = [
     "cache",
@@ -11,6 +23,7 @@ __all__ = [
     "fetch",
     "pipeline",
     "search",
+    "trace",
     "types",
     "urlnorm",
 ]

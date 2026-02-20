@@ -1,0 +1,56 @@
+from __future__ import annotations
+
+import json
+import time
+from pathlib import Path
+from typing import Any, TypedDict
+
+
+class WebTraceFrame(TypedDict, total=False):
+    op: str
+    ts: int
+    seq: int
+    ms: int
+    q: str
+    url: str
+    provider: str
+    status: int
+    bytes: int
+    sha256: str
+    cache_hit: bool
+    error: str
+
+
+class WebTracer:
+    def __init__(self, start_ts: int | None = None) -> None:
+        self._start_ts = start_ts or int(time.time() * 1000)
+        self._seq = 1
+        self._frames: list[WebTraceFrame] = []
+
+    def _now_ms(self) -> int:
+        return int(time.time() * 1000) - self._start_ts
+
+    def emit(self, op: str, **kwargs: Any) -> None:
+        frame: WebTraceFrame = {
+            "op": op,
+            "ts": int(time.time()),
+            "seq": self._seq,
+            "ms": self._now_ms(),
+            **kwargs,
+        }
+        self._frames.append(frame)
+        self._seq += 1
+
+    def get_frames(self) -> list[WebTraceFrame]:
+        return list(self._frames)
+
+    def write_to(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as f:
+            for frame in self._frames:
+                # Use canonical JSON (sorted keys)
+                line = json.dumps(frame, sort_keys=True, separators=(",", ":"))
+                f.write(line + "\n")
+
+
+__all__ = ["WebTracer", "WebTraceFrame"]

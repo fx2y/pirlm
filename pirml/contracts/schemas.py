@@ -66,6 +66,24 @@ class FinalFrame(TypedDict, total=False):
     sha256_output: str
 
 
+# --- Web Pipeline Contracts (Sprint-4) ---
+
+
+class WebTraceFrame(TypedDict, total=False):
+    op: str  # search_call, search_result, fetch_call, fetch_result
+    ts: int
+    seq: int
+    ms: int
+    q: str
+    url: str
+    provider: str
+    status: int
+    bytes: int
+    sha256: str
+    cache_hit: bool
+    error: str
+
+
 # --- ToolSearch Contracts (Sprint-2) ---
 
 
