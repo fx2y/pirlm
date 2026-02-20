@@ -197,20 +197,39 @@ def _truncate_result_output(
     frame: Mapping[str, Any], max_line_bytes: int
 ) -> tuple[JSONObject, str]:
     output = frame.get("output")
-    if not isinstance(output, str):
+    error_val = frame.get("error")
+
+    if isinstance(output, str):
+        target_key = "output"
+        full_text = output
+    elif isinstance(error_val, Mapping):
+        error_map = cast(Mapping[str, Any], error_val)
+        msg_val = error_map.get("msg")
+        if isinstance(msg_val, str):
+            target_key = "msg"
+            full_text = msg_val
+        else:
+            raise ProtocolError("line exceeds max bytes and cannot be truncated")
+    else:
         raise ProtocolError("line exceeds max bytes and cannot be truncated")
 
-    full_bytes = len(output.encode("utf-8"))
+    full_bytes = len(full_text.encode("utf-8"))
     candidate = dict(frame)
     candidate["truncated"] = True
 
-    lo, hi = 0, len(output)
+    lo, hi = 0, len(full_text)
     best = -1
     while lo <= hi:
         mid = (lo + hi) // 2
         probe = dict(candidate)
-        sliced = output[:mid]
-        probe["output"] = sliced
+        sliced = full_text[:mid]
+        if target_key == "output":
+            probe["output"] = sliced
+        else:
+            new_error = dict(cast(Mapping[str, Any], probe["error"]))
+            new_error["msg"] = sliced
+            probe["error"] = new_error
+
         probe["truncated_bytes"] = full_bytes - len(sliced.encode("utf-8"))
         probe_line = canonical_json(probe)
         if _line_bytes(probe_line) <= max_line_bytes:
@@ -223,8 +242,14 @@ def _truncate_result_output(
         raise ProtocolError("max_line_bytes too small for protocol overhead")
 
     truncated = dict(candidate)
-    sliced = output[:best]
-    truncated["output"] = sliced
+    sliced = full_text[:best]
+    if target_key == "output":
+        truncated["output"] = sliced
+    else:
+        new_error = dict(cast(Mapping[str, Any], truncated["error"]))
+        new_error["msg"] = sliced
+        truncated["error"] = new_error
+
     truncated["truncated_bytes"] = full_bytes - len(sliced.encode("utf-8"))
     line = canonical_json(truncated)
     if _line_bytes(line) > max_line_bytes:

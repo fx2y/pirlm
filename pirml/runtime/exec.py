@@ -441,13 +441,18 @@ def _fallback_final(
     return envelope.apply(frame, direction="in", sanitize_args=False)
 
 
-def _project_final_result(raw: Any) -> FinalResult:
+def _project_final_result(raw: Any, fallback_results: list[ResultRow]) -> FinalResult:
     if not isinstance(raw, Mapping):
-        return {"ok": False, "results": []}
+        return {"ok": False, "results": fallback_results}
 
     m_raw = cast(Mapping[str, Any], raw)
     ok = bool(m_raw["ok"]) if "ok" in m_raw else False
     results = cast(list[ResultRow], m_raw["results"]) if "results" in m_raw else []
+
+    # G11: If program didn't provide results but supervisor has some, backfill.
+    if not results and fallback_results:
+        results = fallback_results
+
     projected: FinalResult = {
         "ok": ok,
         "results": results,
@@ -558,10 +563,10 @@ def run_live(
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)
         frames.append(final_frame)
-        final_result = _project_final_result(final_frame.get("result"))
+        final_result = _project_final_result(final_frame.get("result"), result_rows)
     else:
         final_raw = frames[-1].get("result")
-        final_result = _project_final_result(final_raw)
+        final_result = _project_final_result(final_raw, result_rows)
         frames[-1]["result"] = final_result
 
     normalized_frames = normalize_frames(frames, max_line_bytes=max_line_bytes)
@@ -680,10 +685,10 @@ def run_replay(
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)
         frames.append(final_frame)
-        final_result = _project_final_result(final_frame.get("result"))
+        final_result = _project_final_result(final_frame.get("result"), result_rows)
     else:
         final_raw = frames[-1].get("result")
-        final_result = _project_final_result(final_raw)
+        final_result = _project_final_result(final_raw, result_rows)
         frames[-1]["result"] = final_result
 
     # If plan was never built, source_final_result is unknown
@@ -697,6 +702,9 @@ def run_replay(
         final_frame = dict(frames[-1])
         final_frame["meta"] = parity_meta
         frames[-1] = final_frame
+        if parity_meta.get("replay_match") is False:
+            protocol_error = True
+            print("Supervisor fatal error: replay hash mismatch", file=sys.stderr)
 
     normalized_frames = normalize_frames(frames, max_line_bytes=max_line_bytes)
     return RunOutput(

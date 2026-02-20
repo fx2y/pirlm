@@ -241,6 +241,26 @@ class ProtocolTests(unittest.TestCase):
             self.assertEqual(len(set(call_ids)), 2, f"Duplicate IDs found: {call_ids}")
             self.assertEqual(call_ids, ["c00001", "c00002"])
 
+    def test_G13_huge_error_message_truncation(self) -> None:
+        """G13: result error.msg not truncated; huge errors break protocol"""
+        from pirml.runtime.rpc import enforce_line_limit
+
+        huge_msg = "X" * 10000
+        frame = {
+            "op": "result",
+            "id": "c00001",
+            "ok": False,
+            "error": {"type": "execution_error", "msg": huge_msg, "retryable": False},
+        }
+
+        # Truncate to 1KB
+        truncated, line = enforce_line_limit(frame, max_line_bytes=1000)
+        self.assertLessEqual(len(line.encode("utf-8")), 1000)
+        self.assertTrue(truncated["truncated"])
+        self.assertIn("truncated_bytes", truncated)
+        self.assertIn("msg", truncated["error"])
+        self.assertLess(len(truncated["error"]["msg"]), len(huge_msg))
+
 
 if __name__ == "__main__":
     unittest.main()
