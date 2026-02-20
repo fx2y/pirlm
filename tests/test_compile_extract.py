@@ -1,36 +1,50 @@
 from __future__ import annotations
 
 import unittest
-from pathlib import Path
 
-from tests.compile_manifest import EXTRACT_RED_FAILS, all_red_fail_ids, load_fixture_cases
+from pirml.compiler.extract import ExtractionError, extract_blocks
 
 
-class TestCompileExtractManifest(unittest.TestCase):
-    def test_c0_declares_explicit_extract_fail_ids(self) -> None:
-        expected_ids = (
-            "FAIL_B0_EXTRA_TEXT_REJECTED",
-            "FAIL_B0_MISSING_CONTRACT_BLOCK",
-            "FAIL_B0_DUPLICATE_SENTINEL",
-            "FAIL_B0_CONTRACT_JSON_INVALID",
-            "FAIL_B0_PROG_SIZE_OVER_CAP",
-        )
-        actual_ids = tuple(row.id for row in EXTRACT_RED_FAILS)
-        self.assertEqual(actual_ids, expected_ids)
+class TestCompileExtract(unittest.TestCase):
+    def test_extract_ok(self):
+        raw = """<<<PROG>>>
+import asyncio
+async def main():
+    print('hello')
+<<<CONTRACT>>>
+{"tool_deps": []}"""
+        prog, contract = extract_blocks(raw)
+        self.assertEqual(prog, "import asyncio\nasync def main():\n    print('hello')")
+        self.assertEqual(contract, '{"tool_deps": []}')
 
-    def test_c0_fail_ids_are_globally_unique(self) -> None:
-        ids = all_red_fail_ids()
-        self.assertEqual(len(ids), len(set(ids)))
+    def test_extract_with_leading_whitespace(self):
+        # Leading whitespace is okay if it's JUST whitespace?
+        # Actually, extract.py says: if m[0].strip(): raise ExtractionError("extra_prose", ...)
+        # So m[0] can contain whitespace.
+        raw = "  \n<<<PROG>>>\ncode\n<<<CONTRACT>>>\n{}"
+        prog, contract = extract_blocks(raw)
+        self.assertEqual(prog, "code")
+        self.assertEqual(contract, "{}")
 
-    def test_c0_fixture_corpus_includes_extract_rows(self) -> None:
-        cases = load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
-        extract_cases = tuple(case for case in cases if case.stage == "extract")
-        self.assertTrue(extract_cases)
-        for case in extract_cases:
-            self.assertIn("<<<PROG>>>", case.raw_model_text)
-            self.assertIn(case.expect, {"pass", "fail"})
-            if case.expect == "fail":
-                self.assertTrue(case.expected_fail_id)
+    def test_fail_leading_prose(self):
+        raw = "Here is the code:\n<<<PROG>>>\ncode\n<<<CONTRACT>>>\n{}"
+        with self.assertRaisesRegex(ExtractionError, "extra_prose"):
+            extract_blocks(raw)
+
+    def test_fail_missing_sentinel(self):
+        raw = "<<<PROG>>>\ncode\n{}"
+        with self.assertRaisesRegex(ExtractionError, "sentinel_cardinality"):
+            extract_blocks(raw)
+
+    def test_fail_duplicate_sentinel(self):
+        raw = "<<<PROG>>>\ncode\n<<<PROG>>>\nmore code\n<<<CONTRACT>>>\n{}"
+        with self.assertRaisesRegex(ExtractionError, "sentinel_cardinality"):
+            extract_blocks(raw)
+
+    def test_fail_invalid_order(self):
+        raw = "<<<CONTRACT>>>\n{}\n<<<PROG>>>\ncode"
+        with self.assertRaisesRegex(ExtractionError, "invalid_order"):
+            extract_blocks(raw)
 
 
 if __name__ == "__main__":
