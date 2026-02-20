@@ -78,6 +78,9 @@ def _run(args: argparse.Namespace) -> int:
     )
     emit_stdout(normalized, max_line_bytes=max_line_bytes)
 
+    if output.protocol_error:
+        return 2
+
     ok = output.final_result.get("ok")
     return 0 if ok is True else 1
 

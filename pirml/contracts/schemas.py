@@ -21,6 +21,7 @@ class ResultRow(TypedDict, total=False):
 class FinalResult(TypedDict, total=False):
     ok: bool
     results: list[ResultRow]
+    output: Any
     meta: dict[str, Any]
 
 

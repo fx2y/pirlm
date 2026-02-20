@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FinalResult",
+  "type": "object",
+  "required": ["ok", "results"],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "tool", "ok"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^c[0-9]{5}$"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "object",
+            "required": ["type", "msg"],
+            "properties": {
+              "type": {
+                "type": "string"
+              },
+              "msg": {
+                "type": "string"
+              },
+              "retryable": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      }
+    },
+    "output": {},
+    "meta": {
+      "type": "object"
+    }
+  }
+}

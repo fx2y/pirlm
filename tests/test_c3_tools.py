@@ -11,15 +11,15 @@ class ToolContractTests(unittest.TestCase):
         self.registry = default_registry()
 
     def test_readfile_limit(self):
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as tmp:
-            tmp.write("A" * 100)
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp:
+            tmp.write(("A" * 100).encode())
             tmp_path = tmp.name
 
         try:
             # Read with small limit
             res: Any = self.registry.execute("readfile", {"path": tmp_path, "max_bytes": 10})
             self.assertTrue(res["ok"])
-            self.assertEqual(len(res["output"]), 10)
+            self.assertEqual(len(res["output"].encode()), 10)
             self.assertTrue(res["meta"]["truncated"])
             self.assertEqual(res["meta"]["size"], 100)
             self.assertEqual(res["meta"]["read_bytes"], 10)
@@ -27,8 +27,27 @@ class ToolContractTests(unittest.TestCase):
             # Read with large limit
             res = self.registry.execute("readfile", {"path": tmp_path, "max_bytes": 200})
             self.assertTrue(res["ok"])
-            self.assertEqual(len(res["output"]), 100)
+            self.assertEqual(len(res["output"].encode()), 100)
             self.assertFalse(res["meta"]["truncated"])
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_G7_readfile_byte_cap(self) -> None:
+        """G7: readfile caps chars, not bytes"""
+        with tempfile.NamedTemporaryFile(mode="wb", delete=False) as tmp:
+            # 2 emoji = 8 bytes in UTF-8
+            tmp.write("😀😀".encode())
+            tmp_path = tmp.name
+
+        try:
+            # If it caps chars, max_bytes=4 might return 1 emoji (4 bytes) or 4 emojis if it thought they were 1 byte
+            # If it caps bytes, it should return exactly 4 bytes (1 emoji)
+            result = self.registry.execute("readfile", {"path": tmp_path, "max_bytes": 4})
+            self.assertTrue(result.get("ok"))
+            output = result.get("output", "")
+            self.assertEqual(len(output.encode()), 4)
+            meta = result.get("meta", {})
+            self.assertEqual(meta.get("read_bytes"), 4)
         finally:
             Path(tmp_path).unlink()
 

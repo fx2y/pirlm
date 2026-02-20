@@ -15,9 +15,9 @@ class ReconcileTests(unittest.TestCase):
     def test_op_log_is_rejected(self) -> None:
         """C0.T1: op=log must be rejected by protocol validator"""
         frames: list[JSONObject] = [
-            {"op": "call", "id": "c0001", "tool": "echo", "args": {}},
+            {"op": "call", "id": "c00001", "tool": "echo", "args": {}},
             {"op": "log", "msg": "hello"},
-            {"op": "result", "id": "c0001", "ok": True, "output": ""},
+            {"op": "result", "id": "c00001", "ok": True, "output": ""},
             {"op": "final", "ok": True, "result": {"ok": True, "results": []}},
         ]
         with self.assertRaisesRegex(ProtocolError, "unknown op.*log"):

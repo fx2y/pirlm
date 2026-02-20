@@ -23,9 +23,10 @@ from .rpc import (
     enforce_line_limit,
     normalize_frames,
     read_frame,
+    validate_trace,
     write_frame,
 )
-from .tools import ToolRegistry
+from .tools import ToolRegistry, stable_env
 
 _SENSITIVE_ARG_KEYS = frozenset(
     {
@@ -44,6 +45,7 @@ _SENSITIVE_ARG_KEYS = frozenset(
 class RunOutput:
     frames: list[JSONObject]
     final_result: FinalResult
+    protocol_error: bool = False
 
 
 @dataclass
@@ -85,8 +87,15 @@ def _sha256_val(val: Any) -> str:
     return hashlib.sha256(canonical_json(val).encode("utf-8")).hexdigest()
 
 
+def _is_sensitive_key(key: str) -> bool:
+    lk = key.lower()
+    if lk.startswith("auth"):
+        return True
+    return lk in _SENSITIVE_ARG_KEYS
+
+
 def _sanitize_args(value: Any, *, key_hint: str | None = None) -> Any:
-    if key_hint is not None and key_hint.lower() in _SENSITIVE_ARG_KEYS:
+    if key_hint is not None and _is_sensitive_key(key_hint):
         return {"redacted_sha256": _sha256_val(value)}
     if isinstance(value, Mapping):
         return {
@@ -135,7 +144,7 @@ def _fit_result_frame(frame: Mapping[str, Any], max_line_bytes: int) -> JSONObje
 
 
 def _spawn_program(program_path: Path, *, block_tools: bool) -> subprocess.Popen[str]:
-    env = dict(os.environ)
+    env = stable_env()
     ppath = env.get("PYTHONPATH", "")
     cwd = os.getcwd()
     env["PYTHONPATH"] = f"{cwd}{os.pathsep}{ppath}" if ppath else cwd
@@ -153,7 +162,9 @@ def _spawn_program(program_path: Path, *, block_tools: bool) -> subprocess.Popen
     )
 
 
-def _shutdown_process(proc: subprocess.Popen[str], frames: list[JSONObject]) -> None:
+def _shutdown_process(proc: subprocess.Popen[str] | None, frames: list[JSONObject]) -> None:
+    if proc is None:
+        return
     if proc.poll() is None:
         proc.terminate()
         try:
@@ -239,10 +250,13 @@ def _read_program_frame(
 def _require_call_fields(
     frame: Mapping[str, Any],
 ) -> tuple[str, str, Mapping[str, Any], float | None]:
-    call_id = frame.get("id")
-    tool = frame.get("tool")
-    args = frame.get("args")
-    timeout_val = frame.get("timeout")
+    if "id" not in frame or "tool" not in frame or "args" not in frame:
+        raise ProtocolError("call frame missing required fields")
+    call_id = frame["id"]
+    tool = frame["tool"]
+    args = frame["args"]
+    timeout_val = frame["timeout"] if "timeout" in frame else None  # noqa: SIM401
+
     if not isinstance(call_id, str) or call_id == "":
         raise ProtocolError("call.id must be non-empty string")
     if not isinstance(tool, str) or tool == "":
@@ -288,7 +302,7 @@ def _build_result_frame(
 
     if payload.get("truncated") is True:
         frame["truncated"] = True
-        truncated_bytes = payload.get("truncated_bytes")
+        truncated_bytes = payload.get("truncated_bytes", 0)
         if not isinstance(truncated_bytes, int) or truncated_bytes < 0:
             truncated_bytes = 0
         frame["truncated_bytes"] = truncated_bytes
@@ -330,14 +344,15 @@ def execute_with_retry(
         retries += 1
 
 
-def _result_payload_from_trace(frame: Mapping[str, Any]) -> JSONObject:
-    payload: JSONObject = {"ok": bool(frame.get("ok"))}
-    if payload["ok"]:
-        payload["output"] = copy.deepcopy(frame.get("output"))
+def _result_payload_from_trace(frame: Any) -> JSONObject:
+    ok = bool(frame["ok"]) if "ok" in frame else False
+    payload: JSONObject = {"ok": ok}
+    if ok:
+        if "output" in frame:
+            payload["output"] = copy.deepcopy(frame["output"])
     else:
-        error = frame.get("error")
-        if isinstance(error, Mapping):
-            payload["error"] = copy.deepcopy(dict(cast(Mapping[str, Any], error)))
+        if "error" in frame:
+            payload["error"] = copy.deepcopy(dict(cast(Mapping[str, Any], frame["error"])))
         else:
             payload["error"] = {
                 "type": "unknown",
@@ -345,13 +360,12 @@ def _result_payload_from_trace(frame: Mapping[str, Any]) -> JSONObject:
                 "retryable": False,
             }
 
-    meta = frame.get("meta")
-    if isinstance(meta, Mapping):
-        payload["meta"] = copy.deepcopy(dict(cast(Mapping[str, Any], meta)))
+    if "meta" in frame:
+        payload["meta"] = copy.deepcopy(dict(cast(Mapping[str, Any], frame["meta"])))
 
-    if frame.get("truncated") is True:
+    if "truncated" in frame and frame["truncated"] is True:
         payload["truncated"] = True
-        truncated_bytes = frame.get("truncated_bytes")
+        truncated_bytes = frame["truncated_bytes"] if "truncated_bytes" in frame else 0  # noqa: SIM401
         if isinstance(truncated_bytes, int) and truncated_bytes >= 0:
             payload["truncated_bytes"] = truncated_bytes
         else:
@@ -359,29 +373,37 @@ def _result_payload_from_trace(frame: Mapping[str, Any]) -> JSONObject:
     return payload
 
 
-def _build_replay_plan(replay_frames: list[JSONObject]) -> _ReplayPlan:
+def _build_replay_plan(replay_frames: list[JSONObject], max_line_bytes: int) -> _ReplayPlan:
+    validate_trace(replay_frames, max_line_bytes=max_line_bytes)
     call_ids: list[str] = []
     cassette: dict[str, JSONObject] = {}
     source_final_result: Mapping[str, Any] | None = None
 
     for frame in replay_frames:
-        op = frame.get("op")
+        if "op" not in frame:
+            raise ProtocolError("Replay error: missing 'op' in replay trace frame")
+        op = frame["op"]
         if op == "call":
-            call_id = frame.get("id")
-            if not isinstance(call_id, str) or call_id == "":
-                raise ProtocolError("Replay error: invalid call id in replay trace")
+            if "id" not in frame:
+                raise ProtocolError("Replay error: call frame missing id")
+            call_id = frame["id"]
+            if not isinstance(call_id, str):
+                raise ProtocolError("Replay error: call id must be str")
             call_ids.append(call_id)
         elif op == "result":
-            call_id = frame.get("id")
-            if not isinstance(call_id, str) or call_id == "":
-                raise ProtocolError("Replay error: invalid result id in replay trace")
+            if "id" not in frame:
+                raise ProtocolError("Replay error: result frame missing id")
+            call_id = frame["id"]
+            if not isinstance(call_id, str):
+                raise ProtocolError("Replay error: result id must be str")
+            if call_id in cassette:
+                raise ProtocolError(f"Replay error: duplicate result id in replay trace: {call_id}")
             cassette[call_id] = _result_payload_from_trace(frame)
         elif op == "final":
-            result = frame.get("result")
-            if isinstance(result, Mapping):
-                source_final_result = dict(cast(Mapping[str, Any], result))
-        else:
-            raise ProtocolError(f"Replay error: unknown op in replay trace: {op!r}")
+            if "result" in frame:
+                res = frame["result"]
+                if isinstance(res, Mapping):
+                    source_final_result = dict(cast(Mapping[str, Any], res))
 
     return _ReplayPlan(
         call_ids=call_ids,
@@ -419,6 +441,24 @@ def _fallback_final(
     return envelope.apply(frame, direction="in", sanitize_args=False)
 
 
+def _project_final_result(raw: Any) -> FinalResult:
+    if not isinstance(raw, Mapping):
+        return {"ok": False, "results": []}
+
+    m_raw = cast(Mapping[str, Any], raw)
+    ok = bool(m_raw["ok"]) if "ok" in m_raw else False
+    results = cast(list[ResultRow], m_raw["results"]) if "results" in m_raw else []
+    projected: FinalResult = {
+        "ok": ok,
+        "results": results,
+    }
+    if "output" in m_raw:
+        projected["output"] = m_raw["output"]
+    if "meta" in m_raw:
+        projected["meta"] = cast(dict[str, Any], m_raw["meta"])
+    return projected
+
+
 def run_live(
     program_path: Path,
     registry: ToolRegistry,
@@ -428,91 +468,108 @@ def run_live(
 ) -> RunOutput:
     """S.EX2, S.EX3: Subprocess supervisor loop"""
     start_time = time.monotonic()
-    proc = _spawn_program(program_path, block_tools=False)
-    frame_events, frame_reader = _start_frame_reader(proc)
-
     frames: list[JSONObject] = []
     result_rows: list[ResultRow] = []
     validator = StreamValidator(max_line_bytes=max_line_bytes)
-
     envelope = _EnvelopeState(start_ts=clock.now())
+    protocol_error = False
+    proc = None
+    frame_reader = None
 
     try:
-        while True:
-            try:
-                frame = _read_program_frame(
-                    frame_events,
-                    start_time=start_time,
-                    timeout=timeout,
-                )
-            except EOFError:
-                break
-            except ProtocolError:
-                raise
-            except Exception as exc:
-                raise ProtocolError(f"Supervisor read failed: {exc}") from exc
-
-            inbound_with_ts = dict(frame)
-            inbound_with_ts["ts"] = clock.now()
-            inbound_frame = envelope.apply(
-                inbound_with_ts,
-                direction="in",
-                sanitize_args=True,
-            )
-            validator.validate_frame(inbound_frame)
-            frames.append(inbound_frame)
-
-            op = inbound_frame.get("op")
-            if op == "call":
-                call_id, tool, args, tool_timeout = _require_call_fields(frame)
-                payload, retries = execute_with_retry(
-                    registry,
-                    tool=tool,
-                    args=args,
-                    timeout=tool_timeout,
-                    max_retries=2,
-                )
-                res_frame = _build_result_frame(
-                    call_id=call_id,
-                    payload=payload,
-                    ts=clock.now(),
-                    retries=retries,
-                )
-                res_frame = envelope.apply(
-                    res_frame,
-                    direction="out",
-                    sanitize_args=False,
-                )
-                res_frame = _fit_result_frame(res_frame, max_line_bytes=max_line_bytes)
-                validator.validate_frame(res_frame)
-                write_frame(proc.stdin, res_frame, max_line_bytes)  # type: ignore
-                frames.append(res_frame)
-                result_rows.append(_result_row(call_id, tool, res_frame))
-            elif op == "final":
-                break
-
         try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=1)
+            proc = _spawn_program(program_path, block_tools=False)
+            frame_events, frame_reader_thread = _start_frame_reader(proc)
+            frame_reader = frame_reader_thread
+
+            while True:
+                try:
+                    frame = _read_program_frame(
+                        frame_events,
+                        start_time=start_time,
+                        timeout=timeout,
+                    )
+                except EOFError:
+                    break
+                except (ProtocolError, TimeoutError, Exception) as exc:
+                    protocol_error = True
+                    print(f"Supervisor fatal error: {exc}", file=sys.stderr)
+                    break
+
+                inbound_with_ts = dict(frame)
+                inbound_with_ts["ts"] = clock.now()
+                inbound_frame = envelope.apply(
+                    inbound_with_ts,
+                    direction="in",
+                    sanitize_args=True,
+                )
+                validator.validate_frame(inbound_frame)
+                frames.append(inbound_frame)
+
+                op = inbound_frame.get("op")
+                if op == "call":
+                    call_id, tool, args, tool_timeout = _require_call_fields(frame)
+
+                    remaining = _remaining_timeout_seconds(start_time, timeout)
+                    effective_timeout = tool_timeout if tool_timeout is not None else remaining
+                    effective_timeout = min(effective_timeout, remaining)
+
+                    payload, retries = execute_with_retry(
+                        registry,
+                        tool=tool,
+                        args=args,
+                        timeout=effective_timeout,
+                        max_retries=2,
+                    )
+                    res_frame = _build_result_frame(
+                        call_id=call_id,
+                        payload=payload,
+                        ts=clock.now(),
+                        retries=retries,
+                    )
+                    res_frame = envelope.apply(
+                        res_frame,
+                        direction="out",
+                        sanitize_args=False,
+                    )
+                    res_frame = _fit_result_frame(res_frame, max_line_bytes=max_line_bytes)
+                    validator.validate_frame(res_frame)
+                    write_frame(proc.stdin, res_frame, max_line_bytes)  # type: ignore
+                    frames.append(res_frame)
+                    result_rows.append(_result_row(call_id, tool, res_frame))
+                elif op == "final":
+                    break
+
+            if proc and proc.poll() is None:
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=1)
+        except (ProtocolError, Exception) as exc:
+            protocol_error = True
+            print(f"Supervisor fatal error during run: {exc}", file=sys.stderr)
 
     finally:
         _shutdown_process(proc, frames)
-        frame_reader.join(timeout=0.2)
+        if frame_reader:
+            frame_reader.join(timeout=0.2)
 
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)
         frames.append(final_frame)
-        final_result = cast(FinalResult, final_frame["result"])
+        final_result = _project_final_result(final_frame.get("result"))
     else:
         final_raw = frames[-1].get("result")
-        if not isinstance(final_raw, dict):
-            raise ProtocolError("final.result must be an object")
-        final_result = cast(FinalResult, final_raw)
+        final_result = _project_final_result(final_raw)
+        frames[-1]["result"] = final_result
 
     normalized_frames = normalize_frames(frames, max_line_bytes=max_line_bytes)
-    return RunOutput(frames=normalized_frames, final_result=final_result)
+    return RunOutput(
+        frames=normalized_frames,
+        final_result=final_result,
+        protocol_error=protocol_error,
+    )
 
 
 def run_replay(
@@ -524,105 +581,117 @@ def run_replay(
 ) -> RunOutput:
     """C4.T3/C4.T4: Replay mode execution at adapter-boundary cassette."""
     start_time = time.monotonic()
-    plan = _build_replay_plan(replay_frames)
-    proc = _spawn_program(program_path, block_tools=True)
-    frame_events, frame_reader = _start_frame_reader(proc)
-
     frames: list[JSONObject] = []
     result_rows: list[ResultRow] = []
     validator = StreamValidator(max_line_bytes=max_line_bytes)
     envelope = _EnvelopeState(start_ts=clock.now())
-
     call_index = 0
+    protocol_error = False
+    proc = None
+    frame_reader = None
+    plan = None
 
     try:
-        while True:
-            try:
-                frame = _read_program_frame(
-                    frame_events,
-                    start_time=start_time,
-                    timeout=timeout,
-                )
-            except EOFError:
-                break
-            except ProtocolError:
-                raise
-            except Exception as exc:
-                raise ProtocolError(f"Supervisor read failed: {exc}") from exc
-
-            inbound_with_ts = dict(frame)
-            inbound_with_ts["ts"] = clock.now()
-            inbound_frame = envelope.apply(
-                inbound_with_ts,
-                direction="in",
-                sanitize_args=True,
-            )
-            validator.validate_frame(inbound_frame)
-            frames.append(inbound_frame)
-
-            op = inbound_frame.get("op")
-            if op == "call":
-                call_id, tool, _args, _tool_timeout = _require_call_fields(frame)
-                if call_index >= len(plan.call_ids):
-                    raise ProtocolError(f"Replay error: unexpected extra call id {call_id}")
-                expected_id = plan.call_ids[call_index]
-                if call_id != expected_id:
-                    raise ProtocolError(
-                        f"Replay error: expected call id {expected_id}, got {call_id}"
-                    )
-                payload = plan.cassette.get(call_id)
-                if payload is None:
-                    raise ProtocolError(
-                        f"Replay error: missing cassette entry for call id {call_id}"
-                    )
-
-                res_frame = _build_result_frame(
-                    call_id=call_id,
-                    payload=payload,
-                    ts=clock.now(),
-                    retries=0,
-                )
-                res_frame = envelope.apply(
-                    res_frame,
-                    direction="out",
-                    sanitize_args=False,
-                )
-                res_frame = _fit_result_frame(res_frame, max_line_bytes=max_line_bytes)
-                validator.validate_frame(res_frame)
-                write_frame(proc.stdin, res_frame, max_line_bytes)  # type: ignore
-                frames.append(res_frame)
-                result_rows.append(_result_row(call_id, tool, res_frame))
-                call_index += 1
-            elif op == "final":
-                if call_index != len(plan.call_ids):
-                    raise ProtocolError(
-                        f"Replay error: call sequence ended early ({call_index}/{len(plan.call_ids)})"
-                    )
-                break
-
         try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=1)
+            plan = _build_replay_plan(replay_frames, max_line_bytes=max_line_bytes)
+            proc = _spawn_program(program_path, block_tools=True)
+            frame_events, frame_reader_thread = _start_frame_reader(proc)
+            frame_reader = frame_reader_thread
+
+            while True:
+                try:
+                    frame = _read_program_frame(
+                        frame_events,
+                        start_time=start_time,
+                        timeout=timeout,
+                    )
+                except EOFError:
+                    break
+                except (ProtocolError, TimeoutError, Exception) as exc:
+                    protocol_error = True
+                    print(f"Supervisor fatal error: {exc}", file=sys.stderr)
+                    break
+
+                inbound_with_ts = dict(frame)
+                inbound_with_ts["ts"] = clock.now()
+                inbound_frame = envelope.apply(
+                    inbound_with_ts,
+                    direction="in",
+                    sanitize_args=True,
+                )
+                validator.validate_frame(inbound_frame)
+                frames.append(inbound_frame)
+
+                op = inbound_frame.get("op")
+                if op == "call":
+                    call_id, tool, _args, _tool_timeout = _require_call_fields(frame)
+                    if call_index >= len(plan.call_ids):
+                        raise ProtocolError(f"Replay error: unexpected extra call id {call_id}")
+                    expected_id = plan.call_ids[call_index]
+                    if call_id != expected_id:
+                        raise ProtocolError(
+                            f"Replay error: expected call id {expected_id}, got {call_id}"
+                        )
+                    payload = plan.cassette.get(call_id)
+                    if payload is None:
+                        raise ProtocolError(
+                            f"Replay error: missing cassette entry for call id {call_id}"
+                        )
+
+                    res_frame = _build_result_frame(
+                        call_id=call_id,
+                        payload=payload,
+                        ts=clock.now(),
+                        retries=0,
+                    )
+                    res_frame = envelope.apply(
+                        res_frame,
+                        direction="out",
+                        sanitize_args=False,
+                    )
+                    res_frame = _fit_result_frame(res_frame, max_line_bytes=max_line_bytes)
+                    validator.validate_frame(res_frame)
+                    write_frame(proc.stdin, res_frame, max_line_bytes)  # type: ignore
+                    frames.append(res_frame)
+                    result_rows.append(_result_row(call_id, tool, res_frame))
+                    call_index += 1
+                elif op == "final":
+                    if call_index != len(plan.call_ids):
+                        raise ProtocolError(
+                            f"Replay error: call sequence ended early ({call_index}/{len(plan.call_ids)})"
+                        )
+                    break
+
+            if proc and proc.poll() is None:
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=1)
+        except (ProtocolError, Exception) as exc:
+            protocol_error = True
+            print(f"Supervisor fatal error during replay run: {exc}", file=sys.stderr)
 
     finally:
         _shutdown_process(proc, frames)
-        frame_reader.join(timeout=0.2)
+        if frame_reader:
+            frame_reader.join(timeout=0.2)
 
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)
         frames.append(final_frame)
-        final_result = cast(FinalResult, final_frame["result"])
+        final_result = _project_final_result(final_frame.get("result"))
     else:
         final_raw = frames[-1].get("result")
-        if not isinstance(final_raw, dict):
-            raise ProtocolError("final.result must be an object")
-        final_result = cast(FinalResult, final_raw)
+        final_result = _project_final_result(final_raw)
+        frames[-1]["result"] = final_result
+
+    # If plan was never built, source_final_result is unknown
+    source_final_result = plan.source_final_result if plan else None
 
     parity_meta = _replay_parity_meta(
         actual_final_result=final_result,
-        source_final_result=plan.source_final_result,
+        source_final_result=source_final_result,
     )
     if parity_meta is not None and frames and frames[-1].get("op") == "final":
         final_frame = dict(frames[-1])
@@ -630,4 +699,8 @@ def run_replay(
         frames[-1] = final_frame
 
     normalized_frames = normalize_frames(frames, max_line_bytes=max_line_bytes)
-    return RunOutput(frames=normalized_frames, final_result=final_result)
+    return RunOutput(
+        frames=normalized_frames,
+        final_result=final_result,
+        protocol_error=protocol_error,
+    )

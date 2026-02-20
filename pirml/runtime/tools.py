@@ -85,7 +85,7 @@ def _expect_str(args: Mapping[str, JSONValue], key: str) -> str:
     return value
 
 
-def _stable_env() -> dict[str, str]:
+def stable_env() -> dict[str, str]:
     stable = dict(os.environ)
     stable.update(
         {
@@ -136,11 +136,14 @@ def tool_readfile(args: Mapping[str, JSONValue], timeout: float | None = None) -
         stats = path.stat()
         full_size = stats.st_size
 
-        with path.open("r", encoding="utf-8") as f:
-            data = f.read(read_limit)
+        with path.open("rb") as f:
+            raw_data = f.read(read_limit)
 
-        truncated = len(data) < full_size
-        meta = {"size": full_size, "read_bytes": len(data), "truncated": truncated}
+        # G7: Decode with replace to handle potential mid-char truncation
+        data = raw_data.decode("utf-8", errors="replace")
+
+        truncated = len(raw_data) < full_size
+        meta = {"size": full_size, "read_bytes": len(raw_data), "truncated": truncated}
 
         return {"ok": True, "output": data, "meta": meta}
 
@@ -164,7 +167,7 @@ def tool_bash(args: Mapping[str, JSONValue], timeout: float | None = None) -> To
             command,
             capture_output=True,
             check=False,
-            env=_stable_env(),
+            env=stable_env(),
             shell=True,
             text=True,
             timeout=timeout,

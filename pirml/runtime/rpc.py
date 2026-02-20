@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import sys
 import threading
 from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from typing import Any, TextIO, cast
+
+_CALL_ID_PATTERN = re.compile(r"^c\d{5}$")
 
 
 class ProtocolError(ValueError):
@@ -60,12 +63,17 @@ _program_call_count = 0
 _program_call_lock = threading.Lock()
 
 
-def call(tool: str, args: Mapping[str, Any]) -> JSONObject:
-    """S.PG1: Program-side call helper (blocking)"""
+def next_call_id() -> str:
+    """S.RPC5: Shared call ID generator"""
     global _program_call_count
     with _program_call_lock:
         _program_call_count += 1
-        call_id = f"c{_program_call_count:05d}"
+        return f"c{_program_call_count:05d}"
+
+
+def call(tool: str, args: Mapping[str, Any]) -> JSONObject:
+    """S.PG1: Program-side call helper (blocking)"""
+    call_id = next_call_id()
     frame: JSONObject = {
         "op": "call",
         "id": call_id,
@@ -96,9 +104,14 @@ class AsyncRpcClient:
         self.writer = writer
         self._pending: dict[str, asyncio.Future[JSONObject]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._call_count = 0
-        self._lock = threading.Lock()
         self._read_task: asyncio.Task[None] | None = None
+
+    async def __aenter__(self) -> AsyncRpcClient:
+        await self.start()
+        return self
+
+    async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        await self.stop()
 
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -135,9 +148,7 @@ class AsyncRpcClient:
                 break
 
     async def call(self, tool: str, args: Mapping[str, Any]) -> JSONObject:
-        with self._lock:
-            self._call_count += 1
-            call_id = f"c{self._call_count:05d}"
+        call_id = next_call_id()
 
         frame: JSONObject = {
             "op": "call",
@@ -247,6 +258,7 @@ class StreamValidator:
         self.max_line_bytes = max_line_bytes
         self.seen_calls: set[str] = set()
         self.seen_results: set[str] = set()
+        self.last_call_id: str | None = None
         self.final_count = 0
 
     def validate_frame(self, frame: Mapping[str, Any]) -> None:
@@ -263,16 +275,19 @@ class StreamValidator:
 
         if op == "call":
             call_id = frame.get("id")
-            if not isinstance(call_id, str) or call_id == "":
-                raise ProtocolError("invalid call id")
+            if not isinstance(call_id, str) or not _CALL_ID_PATTERN.match(call_id):
+                raise ProtocolError(f"invalid id format: {call_id!r}")
             if call_id in self.seen_calls:
                 raise ProtocolError(f"duplicate call id: {call_id}")
+            if self.last_call_id is not None and call_id <= self.last_call_id:
+                raise ProtocolError(f"non-monotonic call id: {call_id} <= {self.last_call_id}")
             self.seen_calls.add(call_id)
+            self.last_call_id = call_id
 
         elif op == "result":
             result_id = frame.get("id")
-            if not isinstance(result_id, str) or result_id == "":
-                raise ProtocolError("invalid result id")
+            if not isinstance(result_id, str) or not _CALL_ID_PATTERN.match(result_id):
+                raise ProtocolError(f"invalid result id format: {result_id!r}")
             if result_id not in self.seen_calls:
                 raise ProtocolError(f"unknown result id: {result_id}")
             if result_id in self.seen_results:

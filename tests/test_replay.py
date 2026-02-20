@@ -136,6 +136,39 @@ class ReplayTests(unittest.TestCase):
             self.assertEqual(replay.returncode, 2)
             self.assertIn("Replay error: expected call id c00001, got c00999", replay.stderr)
 
+    def test_G5_replay_validation_dup(self) -> None:
+        """G5: replay accepts trace with duplicated result id"""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            bad_trace = base / "bad-trace.ndjson"
+
+            # Trace with duplicate result id c00001
+            bad_lines: list[dict[str, object]] = [
+                {
+                    "op": "call",
+                    "id": "c00001",
+                    "tool": "echo",
+                    "args": {"text": "a"},
+                    "ts": 1700000001,
+                },
+                {"op": "result", "id": "c00001", "ok": True, "output": "a", "ts": 1700000002},
+                {"op": "result", "id": "c00001", "ok": True, "output": "a", "ts": 1700000003},
+                {
+                    "op": "final",
+                    "ok": True,
+                    "result": {"ok": True, "results": []},
+                    "ts": 1700000004,
+                },
+            ]
+            bad_trace.write_text(
+                "\n".join(json.dumps(line, sort_keys=True) for line in bad_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            completed = run_cli(program="tests/prog_ok.py", out_dir=base / "out", replay=bad_trace)
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn("duplicate result id", completed.stderr)
+
     def test_final_and_trace_are_byte_stable_across_three_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

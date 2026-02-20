@@ -90,6 +90,24 @@ class C4ObservabilityTests(unittest.TestCase):
             )
             self.assertNotIn(secret, json.dumps(call_frame, sort_keys=True))
 
+    def test_G6_secret_redaction_variants(self) -> None:
+        """G6: secret redaction keys include auth*"""
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            prog = out_dir / "auth_leak.py"
+            prog.write_text(
+                "from pirml.protocol import call, send_final\n"
+                "call('echo', {'auth_token': 'secret123', 'Authorization': 'Bearer abc'})\n"
+                "send_final(True, {'ok': True, 'results': []})\n",
+                encoding="utf-8",
+            )
+
+            run_cli(program=str(prog), out_dir=out_dir)
+            trace_text = (out_dir / "trace.ndjson").read_text()
+            self.assertNotIn("secret123", trace_text)
+            self.assertNotIn("Bearer abc", trace_text)
+            self.assertIn("redacted_sha256", trace_text)
+
     def test_metrics_row_contains_expected_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp)
