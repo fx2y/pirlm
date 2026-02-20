@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ToolManifest",
+  "type": "object",
+  "required": ["name", "description", "input_schema"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9_]+(\.[a-z0-9_]+)*$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 30
+    },
+    "input_schema": {
+      "type": "object"
+    },
+    "input_examples": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "defer_loading": {
+      "type": "boolean"
+    },
+    "aliases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "verbs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "nouns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

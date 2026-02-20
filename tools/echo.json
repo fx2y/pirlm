@@ -1,0 +1,16 @@
+{
+  "name": "pirml.echo",
+  "description": "Echoes back the input text. Use this to verify communication. When NOT to use: do not use for complex processing.",
+  "input_schema": {
+    "type": "object",
+    "required": ["text"],
+    "properties": {
+      "text": {"type": "string"}
+    }
+  },
+  "input_examples": [
+    {"text": "hello"}
+  ],
+  "tags": ["utility", "debug"],
+  "defer_loading": false
+}

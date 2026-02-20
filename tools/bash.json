@@ -1,0 +1,16 @@
+{
+  "name": "pirml.bash",
+  "description": "Executes a shell command. Returns stdout and stderr. When NOT to use: do not use for long-running processes or interactive commands.",
+  "input_schema": {
+    "type": "object",
+    "required": ["command"],
+    "properties": {
+      "command": {"type": "string"}
+    }
+  },
+  "input_examples": [
+    {"command": "ls -la"}
+  ],
+  "tags": ["system", "exec"],
+  "defer_loading": false
+}

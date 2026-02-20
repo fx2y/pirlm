@@ -66,6 +66,42 @@ class FinalFrame(TypedDict, total=False):
     sha256_output: str
 
 
+# --- ToolSearch Contracts (Sprint-2) ---
+
+
+class ToolManifest(TypedDict, total=False):
+    """S.MF1: Tool manifest contract"""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+    input_examples: list[dict[str, Any]]
+    tags: list[str]
+    defer_loading: bool
+    aliases: list[str]
+    verbs: list[str]
+    nouns: list[str]
+
+
+class SearchMode(str):
+    BM25 = "bm25"
+    REGEX = "regex"
+
+
+class SearchErrorType(str):
+    INVALID_PATTERN = "invalid_pattern"
+    LENGTH_CAP_EXCEEDED = "length_cap_exceeded"
+    NOT_FOUND = "not_found"
+
+
+class ManifestError(TypedDict):
+    """Authoring failure detail"""
+
+    code: str
+    msg: str
+    path: str
+
+
 # S.CT1: Contract schema seed
 FINAL_JSON_SCHEMA = {
     "type": "object",

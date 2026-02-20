@@ -1,0 +1,17 @@
+{
+  "name": "pirml.readfile",
+  "description": "Reads a file from the filesystem. Returns UTF-8 content. When NOT to use: do not use for binary files or very large files without max_bytes.",
+  "input_schema": {
+    "type": "object",
+    "required": ["path"],
+    "properties": {
+      "path": {"type": "string"},
+      "max_bytes": {"type": "integer"}
+    }
+  },
+  "input_examples": [
+    {"path": "README.md", "max_bytes": 1024}
+  ],
+  "tags": ["fs", "io"],
+  "defer_loading": false
+}
