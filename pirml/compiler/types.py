@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, TypedDict
+from typing import Any, TypedDict
 
 from pirml.contracts.schemas import ErrorObject, ToolManifest
 
@@ -11,18 +11,18 @@ CompileErr = ErrorObject
 class VerificationError(TypedDict, total=False):
     code: str
     msg: str
-    line: int
-    symbol: str
+    line: int | None
+    symbol: str | None
 
 
-class CompileErrorFile(TypedDict, total=False):
+class CompileErrorFile(TypedDict):
     ok: bool
-    errors: List[VerificationError]
-    warnings: List[VerificationError]
+    errors: list[VerificationError]
+    warnings: list[VerificationError]
     stage: str
 
 
-class ContractBudget(TypedDict, total=False):
+class ContractBudget(TypedDict):
     max_calls: int
     max_parallel: int
     max_bytes_in: int
@@ -30,25 +30,24 @@ class ContractBudget(TypedDict, total=False):
     timeout_s: int
 
 
-class CompileContract(TypedDict, total=False):
-    tool_deps: List[str]
-    io_schema: Dict[str, Any]
+class CompileContract(TypedDict):
+    tool_deps: list[str]
+    io_schema: dict[str, Any]
     budgets: ContractBudget
-    assertions: List[str]
-    trace_ptr: str
+    assertions: list[str]
 
 
-class CompileArtifacts(TypedDict, total=False):
+class CompileArtifacts(TypedDict):
     prog_src: str
     contract: CompileContract
     raw_text: str
 
 
-class CompileInput(TypedDict, total=False):
+class CompileInput(TypedDict):
     task: str
-    tools: List[ToolManifest]
+    tools: list[ToolManifest]
     budgets: ContractBudget
-    env: Dict[str, Any]
+    env: dict[str, Any]
 
 
 class CompileOutput(TypedDict, total=False):

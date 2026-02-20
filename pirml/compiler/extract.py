@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Tuple
 
 
 class ExtractionError(Exception):
@@ -11,7 +10,7 @@ class ExtractionError(Exception):
         super().__init__(f"{type}: {msg}")
 
 
-def extract_blocks(raw_text: str) -> Tuple[str, str]:
+def extract_blocks(raw_text: str) -> tuple[str, str]:
     """C1.T6: Strict sentinel extractor (<<<PROG>>>/<<<CONTRACT>>>).
     Rejects extra prose, missing blocks, or duplicate sentinels.
     """
@@ -21,7 +20,8 @@ def extract_blocks(raw_text: str) -> Tuple[str, str]:
     # ['pre', 'PROG', 'prog', 'CONTRACT', 'contract']
     if len(m) != 5:
         raise ExtractionError(
-            "sentinel_cardinality", f"Expected exactly 2 sentinels (PROG/CONTRACT), found {len(m)//2}"
+            "sentinel_cardinality",
+            f"Expected exactly 2 sentinels (PROG/CONTRACT), found {len(m) // 2}",
         )
 
     if m[0].strip():

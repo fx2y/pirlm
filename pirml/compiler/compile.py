@@ -1,20 +1,21 @@
 from __future__ import annotations
 
-import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping, cast
+from typing import Any, cast
 
 from pirml.compiler.extract import ExtractionError, extract_blocks
 from pirml.compiler.io import write_compile_error, write_contract, write_prog, write_raw
 from pirml.compiler.model import get_model_adapter
 from pirml.compiler.prompt import build_compile_prompt
+from pirml.compiler.smoke import run_smoke_subprocess
 from pirml.compiler.types import (
     CompileArtifacts,
-    CompileContract,
     CompileErr,
     CompileErrorFile,
     CompileOutput,
     ContractBudget,
+    VerificationError,
 )
 from pirml.compiler.verify import verify_compile_output
 from pirml.contracts.schemas import ToolManifest
@@ -54,9 +55,10 @@ def compile_task(
     k: int = 5,
     budgets: ContractBudget | None = None,
     model: str | None = None,
+    skip_smoke: bool = False,
 ) -> CompileOutput:
     """C1.T7: Orchestrate compile pipeline.
-    assemble -> model -> extract -> write artifacts.
+    assemble -> model -> extract -> verify -> smoke -> write artifacts.
     """
     if budgets is None:
         budgets = {
@@ -103,7 +105,34 @@ def compile_task(
 
         assert contract is not None  # if no errors, contract must be valid
 
-        # 6. Write artifacts
+        # 6. Smoke Test (Cycle C3)
+        if not skip_smoke:
+            smoke_res = run_smoke_subprocess(prog_src, contract)
+            if smoke_res.stdout:
+                (out_dir / "smoke_trace.ndjson").write_text(smoke_res.stdout, encoding="utf-8")
+
+            if not smoke_res.ok:
+                smoke_err = smoke_res.error or {
+                    "type": "smoke_failed",
+                    "msg": "Unknown smoke failure",
+                    "retryable": False,
+                }
+                v_err: VerificationError = {
+                    "code": smoke_err.get("type", "smoke_failed"),
+                    "msg": smoke_err.get("msg", "Unknown smoke failure"),
+                    "line": None,
+                    "symbol": None,
+                }
+                err_file_smoke: CompileErrorFile = {
+                    "ok": False,
+                    "errors": [v_err],
+                    "warnings": [],
+                    "stage": "smoke",
+                }
+                write_compile_error(out_dir / "compile_error.json", err_file_smoke)
+                return {"ok": False, "error": err_file_smoke}
+
+        # 7. Write artifacts
         write_prog(out_dir / "prog.py", prog_src)
         write_contract(out_dir / "contract.json", contract)
 
@@ -119,6 +148,6 @@ def compile_task(
         write_compile_error(out_dir / "compile_error.json", err)
         return {"ok": False, "error": err}
     except Exception as e:
-        err: CompileErr = {"type": "internal_error", "msg": str(e), "retryable": False}
-        write_compile_error(out_dir / "compile_error.json", err)
-        return {"ok": False, "error": err}
+        err_int: CompileErr = {"type": "internal_error", "msg": str(e), "retryable": False}
+        write_compile_error(out_dir / "compile_error.json", err_int)
+        return {"ok": False, "error": err_int}

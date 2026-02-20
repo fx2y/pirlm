@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import unittest
+from typing import Any, cast
 
 from pirml.compiler.prompt import build_compile_prompt
+from pirml.compiler.types import ContractBudget
 
 
 class TestCompilePrompt(unittest.TestCase):
     def test_prompt_contains_task_and_tools(self):
         task = "list all files"
-        tools = [
+        tools: list[dict[str, Any]] = [
             {"name": "list_files", "description": "list files in dir", "input_schema": {}}
         ]
-        budgets = {
+        budgets: ContractBudget = {
             "max_calls": 5,
             "max_parallel": 2,
             "max_bytes_in": 1000,
@@ -28,8 +30,10 @@ class TestCompilePrompt(unittest.TestCase):
 
     def test_prompt_deterministic(self):
         task = "task"
-        tools = [{"name": "t1"}, {"name": "t2"}]
-        budgets = {"max_calls": 10}
+        tools: list[dict[str, Any]] = [{"name": "t1"}, {"name": "t2"}]
+        # Use cast for incomplete budget in tests if needed,
+        # or provide full budget
+        budgets = cast(ContractBudget, {"max_calls": 10})
         p1 = build_compile_prompt(task, tools, budgets)
         p2 = build_compile_prompt(task, tools, budgets)
         self.assertEqual(p1, p2)

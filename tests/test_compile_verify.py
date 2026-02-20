@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from tests.compile_manifest import VERIFY_RED_FAILS, load_fixture_cases
 from pirml.compiler.extract import extract_blocks
 from pirml.compiler.verify import verify_compile_output
+from tests.compile_manifest import VERIFY_RED_FAILS, load_fixture_cases
 
 
 class TestCompileVerifyManifest(unittest.TestCase):
@@ -41,7 +41,7 @@ class TestCompileVerifyManifest(unittest.TestCase):
         for case in cases:
             if case.stage not in ("extract", "verify"):
                 continue
-            
+
             # If it failed extraction, skip here (that's test_compile_extract's job)
             try:
                 prog_src, contract_src = extract_blocks(case.raw_model_text)
@@ -49,7 +49,7 @@ class TestCompileVerifyManifest(unittest.TestCase):
                 continue
 
             contract, errors = verify_compile_output(prog_src, contract_src, list(case.tools_topk))
-            
+
             if case.expect == "pass":
                 self.assertFalse(errors, f"Case {case.id} expected pass but got errors: {errors}")
                 self.assertIsNotNone(contract)

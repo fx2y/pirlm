@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import ast
 import json
-import re
-from pathlib import Path
-from typing import Any, List, Set, TypedDict, cast
+from typing import cast
 
-from pirml.compiler.types import CompileContract, ContractBudget
-from pirml.runtime.rpc import canonical_json
+from pirml.compiler.types import CompileContract, VerificationError
 
 # S.AST1: Import allowlist
 ALLOW_IMPORTS = {
@@ -29,13 +26,6 @@ BAN_CALLS = {"eval", "exec", "compile", "__import__", "open"}
 ALLOW_SERIAL_REASONS = {"dependency_chain", "rate_limit", "ordering_required"}
 
 
-class VerificationError(TypedDict):
-    code: str
-    msg: str
-    line: int | None
-    symbol: str | None
-
-
 class CompileVerifier:
     def __init__(self, allowed_tools: list[str]):
         self.allowed_tools = set(allowed_tools)
@@ -55,7 +45,7 @@ class CompileVerifier:
         # S.CT5: Alias normalize
         if "final_schema" in data:
             data.setdefault("io_schema", {})["final_schema"] = data.pop("final_schema")
-        
+
         # S.CT1: Contract required keys
         REQ = {"tool_deps", "io_schema", "budgets", "assertions"}
         miss = REQ - set(data.keys())
@@ -104,74 +94,111 @@ class CompileVerifier:
             if isinstance(n, ast.Import):
                 for alias in n.names:
                     if alias.name not in ALLOW_IMPORTS:
-                        self.add_error("ast_import_denied", f"Import {alias.name} not allowed", line=n.lineno, symbol=alias.name)
+                        self.add_error(
+                            "ast_import_denied",
+                            f"Import {alias.name} not allowed",
+                            line=n.lineno,
+                            symbol=alias.name,
+                        )
             if isinstance(n, ast.ImportFrom):
                 mod = n.module or ""
                 # Check if the module or sub-module is allowed
-                if mod not in ALLOW_IMPORTS and not any(mod.startswith(a + ".") for a in ALLOW_IMPORTS):
-                    self.add_error("ast_import_denied", f"Import from {mod} not allowed", line=n.lineno, symbol=mod)
+                if mod not in ALLOW_IMPORTS and not any(
+                    mod.startswith(a + ".") for a in ALLOW_IMPORTS
+                ):
+                    self.add_error(
+                        "ast_import_denied",
+                        f"Import from {mod} not allowed",
+                        line=n.lineno,
+                        symbol=mod,
+                    )
 
         # C2.T5: Banned calls (S.AST2)
         for n in ast.walk(tree):
             if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id in BAN_CALLS:
-                self.add_error("banned_call", f"Call to {n.func.id} is banned", line=n.lineno, symbol=n.func.id)
+                self.add_error(
+                    "banned_call", f"Call to {n.func.id} is banned", line=n.lineno, symbol=n.func.id
+                )
 
         # C2.T6: Single async main (S.AST3)
         m = [n for n in tree.body if isinstance(n, ast.AsyncFunctionDef) and n.name == "main"]
         if len(m) != 1:
-            self.add_error("missing_async_main", f"Exactly one async def main() required, found {len(m)}")
+            self.add_error(
+                "missing_async_main", f"Exactly one async def main() required, found {len(m)}"
+            )
 
         # C2.T6: Single send_final (S.AST4)
-        emit = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "send_final"]
+        emit = [
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "send_final"
+        ]
         if len(emit) != 1:
-            self.add_error("invalid_final_emit", f"Exactly one send_final() required, found {len(emit)}")
+            self.add_error(
+                "invalid_final_emit", f"Exactly one send_final() required, found {len(emit)}"
+            )
 
         # C2.T7: Extract awaited TOOL_* deps (S.AST5)
         ast_deps = {
-            f.id[5:] for n in ast.walk(tree)
-            if isinstance(n, ast.Await) and isinstance(n.value, ast.Call) and isinstance((f := n.value.func), ast.Name) and f.id.startswith("TOOL_")
+            n.func.id[5:]
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Name)
+            and n.func.id.startswith("TOOL_")
         }
-        contract_deps = set(contract["tool_deps"])
+        contract_deps = {t.replace(".", "_") for t in contract["tool_deps"]}
         if ast_deps != contract_deps:
             missing = contract_deps - ast_deps
             extra = ast_deps - contract_deps
-            msg = []
-            if missing: msg.append(f"missing in AST: {sorted(list(missing))}")
-            if extra: msg.append(f"missing in contract: {sorted(list(extra))}")
+            msg: list[str] = []
+            if missing:
+                msg.append(f"missing in AST: {sorted(list(missing))}")
+            if extra:
+                msg.append(f"missing in contract: {sorted(list(extra))}")
             self.add_error("tool_dep_mismatch", "; ".join(msg))
 
         # C2.T8: Parallelism policy (S.AST6, S.AST7)
-        uses_gather = any(isinstance(n, ast.Attribute) and n.attr == "gather" for n in ast.walk(tree))
+        uses_gather = any(
+            isinstance(n, ast.Attribute) and n.attr == "gather" for n in ast.walk(tree)
+        )
         # Simple fanout check: more than one await call in main?
         # Actually S.AST6 just checks for 'gather' attribute.
         # Let's check if there are multiple awaited tool calls and no gather.
-        
+
         tool_call_nodes = [
-            n for n in ast.walk(tree)
-            if isinstance(n, ast.Await) and isinstance(n.value, ast.Call) and isinstance((f := n.value.func), ast.Name) and f.id.startswith("TOOL_")
+            n
+            for n in ast.walk(tree)
+            if isinstance(n, ast.Await)
+            and isinstance(n.value, ast.Call)
+            and isinstance((f := n.value.func), ast.Name)
+            and f.id.startswith("TOOL_")
         ]
-        
+
         if len(tool_call_nodes) > 1 and not uses_gather:
             # Check for SERIAL_OK (S.AST7)
             if "SERIAL_OK:" not in prog_src:
-                self.add_error("missing_gather", "Multiple tool calls found without asyncio.gather() or SERIAL_OK: escape")
+                self.add_error(
+                    "missing_gather",
+                    "Multiple tool calls found without asyncio.gather() or SERIAL_OK: escape",
+                )
             else:
                 # C2.T8: Check reason (S.AST8)
                 # This is a bit crude, we just check if any line has SERIAL_OK: with a valid reason
                 found_valid_reason = False
                 for line in prog_src.splitlines():
                     if "SERIAL_OK:" in line:
-                        reason = line.split("SERIAL_OK:", 1)[1].strip().split()[0] # get first word
+                        reason = line.split("SERIAL_OK:", 1)[1].strip().split()[0]  # get first word
                         if reason in ALLOW_SERIAL_REASONS:
                             found_valid_reason = True
                             break
                 if not found_valid_reason:
-                    self.add_error("invalid_serial_reason", "SERIAL_OK: found but reason is not in allowlist")
+                    self.add_error(
+                        "invalid_serial_reason", "SERIAL_OK: found but reason is not in allowlist"
+                    )
+
 
 def verify_compile_output(
-    prog_src: str,
-    contract_src: str,
-    allowed_tools: list[str]
+    prog_src: str, contract_src: str, allowed_tools: list[str]
 ) -> tuple[CompileContract | None, list[VerificationError]]:
     v = CompileVerifier(allowed_tools)
     contract = v.verify_contract(contract_src)

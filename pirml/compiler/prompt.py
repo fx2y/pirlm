@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any
 
 from pirml.compiler.types import ContractBudget
 
 
 def build_compile_prompt(
     task: str,
-    tools: List[Dict[str, Any]],
+    tools: list[dict[str, Any]],
     budgets: ContractBudget,
-    env: Dict[str, Any] | None = None,
+    env: dict[str, Any] | None = None,
 ) -> str:
     """C1.T4: Build compiler prompt with strict directives and sentinels."""
     tool_names = [t.get("name", "") for t in tools]
