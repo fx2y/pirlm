@@ -64,7 +64,7 @@ class ProtocolTests(unittest.TestCase):
     def test_max_line_bytes_enforced_with_explicit_truncation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp)
-            completed = run_cli(program="tests/prog_long.py", out_dir=out_dir, max_line_bytes=220)
+            completed = run_cli(program="tests/prog_long.py", out_dir=out_dir, max_line_bytes=300)
 
             self.assertEqual(completed.returncode, 0, completed.stderr)
             frames = parse_stdout_frames(completed.stdout)
@@ -76,7 +76,7 @@ class ProtocolTests(unittest.TestCase):
             self.assertGreater(result["truncated_bytes"], 0)
 
             for line in completed.stdout.splitlines():
-                self.assertLessEqual(len(line.encode("utf-8")), 220)
+                self.assertLessEqual(len(line.encode("utf-8")), 300)
 
 
 if __name__ == "__main__":

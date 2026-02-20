@@ -18,17 +18,22 @@ class ResultRow(TypedDict, total=False):
     error: ErrorObject
 
 
-class FinalResult(TypedDict):
+class FinalResult(TypedDict, total=False):
     ok: bool
     results: list[ResultRow]
+    meta: dict[str, Any]
 
 
-class CallFrame(TypedDict):
+class CallFrame(TypedDict, total=False):
     op: str  # Literal["call"]
     id: str
     tool: str
     args: dict[str, Any]
     ts: int
+    seq: int
+    dir: str
+    ms: int
+    sha256_args: str
 
 
 class ResultFrame(TypedDict, total=False):
@@ -39,15 +44,24 @@ class ResultFrame(TypedDict, total=False):
     error: ErrorObject
     meta: dict[str, Any]
     ts: int
+    seq: int
+    dir: str
+    ms: int
+    sha256_output: str
     truncated: bool
     truncated_bytes: int
 
 
-class FinalFrame(TypedDict):
+class FinalFrame(TypedDict, total=False):
     op: str  # Literal["final"]
     ok: bool
     result: FinalResult
+    meta: dict[str, Any]
     ts: int
+    seq: int
+    dir: str
+    ms: int
+    sha256_output: str
 
 
 # S.CT1: Contract schema seed

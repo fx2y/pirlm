@@ -12,6 +12,7 @@ from .protocol import (
     emit_stdout,
     load_jsonl,
     write_final,
+    write_metrics,
     write_trace,
 )
 from .tools import default_registry
@@ -37,10 +38,18 @@ def _run(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     trace_path = out_dir / "trace.ndjson"
     final_path = out_dir / "final.json"
+    metrics_path = out_dir / "metrics.csv"
 
     if args.replay:
+        if not args.prog:
+            raise ValueError("--prog is required for --replay to verify call sequence")
         replay_frames = load_jsonl(Path(args.replay))
-        output = run_replay(replay_frames, max_line_bytes=max_line_bytes)
+        output = run_replay(
+            program_path=Path(args.prog),
+            replay_frames=replay_frames,
+            clock=SequenceClock.from_env(),
+            max_line_bytes=max_line_bytes,
+        )
     else:
         if not args.prog:
             raise ValueError("--prog is required unless --replay is provided")
@@ -53,6 +62,13 @@ def _run(args: argparse.Namespace) -> int:
 
     normalized = write_trace(trace_path, output.frames, max_line_bytes=max_line_bytes)
     write_final(final_path, output.final_result)
+    write_metrics(
+        metrics_path,
+        normalized,
+        output.final_result,
+        trace_path=trace_path,
+        final_path=final_path,
+    )
     emit_stdout(normalized, max_line_bytes=max_line_bytes)
 
     ok = output.final_result.get("ok")

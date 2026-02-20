@@ -21,6 +21,7 @@ from .runtime.rpc import (
 from .runtime.trace import (
     emit_stdout,
     write_final,
+    write_metrics,
     write_trace,
 )
 
@@ -47,6 +48,7 @@ __all__ = [
     "write_frame",
     "emit_stdout",
     "write_final",
+    "write_metrics",
     "write_trace",
     "load_jsonl",
 ]
