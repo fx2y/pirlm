@@ -200,6 +200,25 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
         if key in m and not isinstance(m[key], t):
             errors.append({"code": "schema", "msg": f"{key} must be a {t.__name__}", "path": key})
 
+    # C4.T4: Reject ambiguous tools lacking examples
+    has_examples = bool(m.get("input_examples"))
+    has_aliases = bool(m.get("aliases"))
+    schema_val = m.get("input_schema")
+    if isinstance(schema_val, dict):
+        schema_dict = cast(dict[str, Any], schema_val)
+        props = cast(dict[str, Any], schema_dict.get("properties", {}))
+        required = cast(list[str], schema_dict.get("required", []))
+        has_optional = any(p not in required for p in props)
+
+        if (has_aliases or has_optional) and not has_examples:
+            errors.append(
+                {
+                    "code": "M4",
+                    "msg": "Tool is ambiguous (has aliases or optional args) but lacks input_examples",
+                    "path": "input_examples",
+                }
+            )
+
     return errors
 
 

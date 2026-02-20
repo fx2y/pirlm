@@ -48,6 +48,38 @@ class TestToolSearchLint(unittest.TestCase):
         errors = lint_manifest(m_no_schema)
         self.assertTrue(any(e["code"] == "M3" for e in errors))
 
+    def test_ambiguous_tool_requires_examples(self) -> None:
+        # 1. Has alias, no examples -> Fail
+        m_alias: dict[str, Any] = {
+            "name": "svc.tool",
+            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": ["a"],
+            },
+            "aliases": ["other.name"],
+        }
+        errors = lint_manifest(m_alias)
+        self.assertTrue(any(e["code"] == "M4" and "ambiguous" in e["msg"] for e in errors))
+
+        # 2. Has optional arg, no examples -> Fail
+        m_optional: dict[str, Any] = {
+            "name": "svc.tool",
+            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": [],
+            },
+        }
+        errors = lint_manifest(m_optional)
+        self.assertTrue(any(e["code"] == "M4" and "ambiguous" in e["msg"] for e in errors))
+
+        # 3. Has optional arg, HAS examples -> Pass
+        m_optional_ok: dict[str, Any] = m_optional | {"input_examples": [{"a": "val"}]}
+        self.assertEqual(lint_manifest(m_optional_ok), [])
+
     def test_catalog_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)

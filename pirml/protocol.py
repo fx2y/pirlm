@@ -15,6 +15,7 @@ from .runtime.rpc import (
     parse_ndjson_lines,
     read_frame,
     send_final,
+    validate_strict_trace,
     validate_trace,
     write_frame,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "read_frame",
     "send_final",
     "validate_trace",
+    "validate_strict_trace",
     "write_frame",
     "emit_stdout",
     "write_final",

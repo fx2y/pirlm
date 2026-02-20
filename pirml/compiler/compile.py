@@ -44,21 +44,18 @@ def assemble_tools_topk(
     selected_tools = load_selected(names, str(tools_dir))
 
     # T4: Reject tools lacking examples when ambiguous (optional args or aliases)
+    # Refactored to use lint_manifest for consistency with authoring gates
+    from pirml.toolsearch.lint import lint_manifest
+
     for tool in selected_tools:
         name = tool.get("name", "unknown")
-        has_examples = bool(tool.get("input_examples"))
-        has_aliases = bool(tool.get("aliases"))
-
-        schema = tool.get("input_schema", {})
-        props = schema.get("properties", {})
-        required = schema.get("required", [])
-        has_optional = any(p not in required for p in props)
-
-        if (has_aliases or has_optional) and not has_examples:
-            raise ValueError(
-                f"Tool '{name}' is ambiguous (has aliases or optional args) but lacks input_examples. "
-                "Examples are required for ambiguous tools to ensure compiler precision."
-            )
+        errors = lint_manifest(tool)
+        for err in errors:
+            if err["code"] == "M4" and "ambiguous" in err["msg"]:
+                raise ValueError(
+                    f"Tool '{name}' is ambiguous (has aliases or optional args) but lacks input_examples. "
+                    "Examples are required for ambiguous tools to ensure compiler precision."
+                )
 
     # 3. Render for prompt
     return render_selected_tools(selected_tools)

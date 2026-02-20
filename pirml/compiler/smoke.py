@@ -135,6 +135,168 @@ def _sha256(val: Any) -> str:
     return hashlib.sha256(canonical_json(val).encode("utf-8")).hexdigest()
 
 
+def parse_smoke_output(stdout: str) -> SmokeResult:
+    """Parse and post-process smoke harness stdout for trace_lint parity."""
+    lines = [line_raw for line_raw in stdout.splitlines() if line_raw.strip()]
+    if not lines:
+        return SmokeResult(
+            ok=False,
+            error={
+                "type": "smoke_no_output",
+                "msg": "No output from smoke test",
+                "retryable": False,
+            },
+            stdout=stdout,
+        )
+
+    try:
+        # We look for all lines and validate they are part of the protocol
+        # Also attach supervisor fields for trace_lint parity (C3.T4)
+        final_found = 0
+        processed_lines: list[str] = []
+        seq = 0
+        start_ts: int | None = None
+
+        last_parsed_data: dict[str, Any] | None = None
+        for line in lines:
+            try:
+                data = cast(dict[str, Any], json.loads(line))
+                if "op" not in data:
+                    continue
+                op = data["op"]
+                if op not in ("call", "result", "final"):
+                    return SmokeResult(
+                        ok=False,
+                        error={
+                            "type": "smoke_output_invalid",
+                            "msg": f"Unexpected op: {op}",
+                            "retryable": False,
+                        },
+                        stdout=stdout,
+                    )
+
+                # Post-process for trace_lint
+                seq += 1
+                data["seq"] = seq
+                ts = cast(int, data.get("ts", 0))
+                if start_ts is None:
+                    start_ts = ts
+                data["ms"] = ts - start_ts
+
+                if op == "call":
+                    data["dir"] = "in"
+                    data["sha256_args"] = _sha256(data.get("args"))
+                elif op == "result":
+                    data["dir"] = "out"
+                    if "output" in data:
+                        data["sha256_output"] = _sha256(data.get("output"))
+                    else:
+                        data["sha256_output"] = _sha256(data.get("error"))
+                elif op == "final":
+                    final_found += 1
+                    data["dir"] = "in"
+                    data["sha256_output"] = _sha256(data.get("result"))
+                    if final_found > 1:
+                        return SmokeResult(
+                            ok=False,
+                            error={
+                                "type": "FAIL_B3_MULTI_FINAL",
+                                "msg": "Multiple final frames in smoke stdout",
+                                "retryable": False,
+                            },
+                            stdout=stdout,
+                        )
+
+                processed_lines.append(canonical_json(data))
+                last_parsed_data = data
+
+            except json.JSONDecodeError:
+                return SmokeResult(
+                    ok=False,
+                    error={
+                        "type": "FAIL_B3_STDOUT_CHATTER",
+                        "msg": "Non-JSON chatter in smoke stdout",
+                        "retryable": False,
+                    },
+                    stdout=stdout,
+                )
+
+        if final_found == 0 or last_parsed_data is None:
+            return SmokeResult(
+                ok=False,
+                error={
+                    "type": "smoke_output_invalid",
+                    "msg": "No final op found in stdout",
+                    "retryable": False,
+                },
+                stdout=stdout,
+            )
+
+        # Reconstruct stdout with processed lines
+        new_stdout = "\n".join(processed_lines) + "\n"
+
+        if last_parsed_data["op"] == "final":
+            is_ok = False
+            if "ok" in last_parsed_data:
+                is_ok = bool(last_parsed_data["ok"])
+
+            res: dict[str, Any] = {}
+            if "result" in last_parsed_data:
+                res_val = last_parsed_data["result"]
+                if isinstance(res_val, dict):
+                    res = cast(dict[str, Any], res_val)
+
+            err: CompileErr | None = None
+            if not is_ok:
+                # Try to extract error from result object
+                if "error" in res:
+                    err_val = res["error"]
+                    if isinstance(err_val, dict):
+                        err_obj = cast(dict[str, Any], err_val)
+                        err_type = "smoke_failed"
+                        if "type" in err_obj:
+                            err_type = str(err_obj["type"])
+                        err_msg = "Smoke test failed"
+                        if "msg" in err_obj:
+                            err_msg = str(err_obj["msg"])
+
+                        err = {
+                            "type": err_type,
+                            "msg": err_msg,
+                            "retryable": False,
+                        }
+                if err is None:
+                    err = {
+                        "type": "smoke_failed",
+                        "msg": "Smoke test failed",
+                        "retryable": False,
+                    }
+
+            return SmokeResult(
+                ok=is_ok,
+                final=res,
+                error=err,
+                stdout=new_stdout,
+            )
+        else:
+            return SmokeResult(
+                ok=False,
+                error={
+                    "type": "smoke_output_invalid",
+                    "msg": "Final op must be last",
+                    "retryable": False,
+                },
+                stdout=new_stdout,
+            )
+
+    except Exception as e:
+        return SmokeResult(
+            ok=False,
+            error={"type": "smoke_internal_error", "msg": str(e), "retryable": False},
+            stdout=stdout,
+        )
+
+
 def run_smoke_subprocess(
     prog_src: str, contract: CompileContract, timeout_margin: float = 0.5
 ) -> SmokeResult:
@@ -171,173 +333,9 @@ def run_smoke_subprocess(
                 stderr=stderr,
             )
 
-        # S.SM3: Validate stdout
-        lines = [line_raw for line_raw in stdout.splitlines() if line_raw.strip()]
-        if not lines:
-            return SmokeResult(
-                ok=False,
-                error={
-                    "type": "smoke_no_output",
-                    "msg": "No output from smoke test",
-                    "retryable": False,
-                },
-                stdout=stdout,
-                stderr=stderr,
-            )
-
-        try:
-            # We look for all lines and validate they are part of the protocol
-            # Also attach supervisor fields for trace_lint parity (C3.T4)
-            final_found = 0
-            processed_lines: list[str] = []
-            seq = 0
-            start_ts: int | None = None
-
-            last_parsed_data: dict[str, Any] | None = None
-            for line in lines:
-                try:
-                    data = cast(dict[str, Any], json.loads(line))
-                    if "op" not in data:
-                        continue
-                    op = data["op"]
-                    if op not in ("call", "result", "final"):
-                        return SmokeResult(
-                            ok=False,
-                            error={
-                                "type": "smoke_output_invalid",
-                                "msg": f"Unexpected op: {op}",
-                                "retryable": False,
-                            },
-                            stdout=stdout,
-                            stderr=stderr,
-                        )
-
-                    # Post-process for trace_lint
-                    seq += 1
-                    data["seq"] = seq
-                    ts = cast(int, data.get("ts", 0))
-                    if start_ts is None:
-                        start_ts = ts
-                    data["ms"] = ts - start_ts
-
-                    if op == "call":
-                        data["dir"] = "in"
-                        data["sha256_args"] = _sha256(data.get("args"))
-                    elif op == "result":
-                        data["dir"] = "out"
-                        if "output" in data:
-                            data["sha256_output"] = _sha256(data.get("output"))
-                        else:
-                            data["sha256_output"] = _sha256(data.get("error"))
-                    elif op == "final":
-                        final_found += 1
-                        data["dir"] = "in"
-                        data["sha256_output"] = _sha256(data.get("result"))
-                        if final_found > 1:
-                            return SmokeResult(
-                                ok=False,
-                                error={
-                                    "type": "FAIL_B3_MULTI_FINAL",
-                                    "msg": "Multiple final frames in smoke stdout",
-                                    "retryable": False,
-                                },
-                                stdout=stdout,
-                                stderr=stderr,
-                            )
-
-                    processed_lines.append(canonical_json(data))
-                    last_parsed_data = data
-
-                except json.JSONDecodeError:
-                    return SmokeResult(
-                        ok=False,
-                        error={
-                            "type": "FAIL_B3_STDOUT_CHATTER",
-                            "msg": "Non-JSON chatter in smoke stdout",
-                            "retryable": False,
-                        },
-                        stdout=stdout,
-                        stderr=stderr,
-                    )
-
-            if final_found == 0 or last_parsed_data is None:
-                return SmokeResult(
-                    ok=False,
-                    error={
-                        "type": "smoke_output_invalid",
-                        "msg": "No final op found in stdout",
-                        "retryable": False,
-                    },
-                    stdout=stdout,
-                    stderr=stderr,
-                )
-
-            # Reconstruct stdout with processed lines
-            new_stdout = "\n".join(processed_lines) + "\n"
-
-            if last_parsed_data["op"] == "final":
-                is_ok = False
-                if "ok" in last_parsed_data:
-                    is_ok = bool(last_parsed_data["ok"])
-
-                res: dict[str, Any] = {}
-                if "result" in last_parsed_data:
-                    res_val = last_parsed_data["result"]
-                    if isinstance(res_val, dict):
-                        res = cast(dict[str, Any], res_val)
-
-                err: CompileErr | None = None
-                if not is_ok:
-                    # Try to extract error from result object
-                    if "error" in res:
-                        err_val = res["error"]
-                        if isinstance(err_val, dict):
-                            err_obj = cast(dict[str, Any], err_val)
-                            err_type = "smoke_failed"
-                            if "type" in err_obj:
-                                err_type = str(err_obj["type"])
-                            err_msg = "Smoke test failed"
-                            if "msg" in err_obj:
-                                err_msg = str(err_obj["msg"])
-
-                            err = {
-                                "type": err_type,
-                                "msg": err_msg,
-                                "retryable": False,
-                            }
-                    if err is None:
-                        err = {
-                            "type": "smoke_failed",
-                            "msg": "Smoke test failed",
-                            "retryable": False,
-                        }
-
-                return SmokeResult(
-                    ok=is_ok,
-                    final=res,
-                    error=err,
-                    stdout=new_stdout,
-                    stderr=stderr,
-                )
-            else:
-                return SmokeResult(
-                    ok=False,
-                    error={
-                        "type": "smoke_output_invalid",
-                        "msg": "Final op must be last",
-                        "retryable": False,
-                    },
-                    stdout=new_stdout,
-                    stderr=stderr,
-                )
-
-        except Exception as e:
-            return SmokeResult(
-                ok=False,
-                error={"type": "smoke_internal_error", "msg": str(e), "retryable": False},
-                stdout=stdout,
-                stderr=stderr,
-            )
+        res = parse_smoke_output(stdout)
+        res.stderr = stderr
+        return res
 
     except subprocess.TimeoutExpired:
         return SmokeResult(
