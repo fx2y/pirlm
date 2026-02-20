@@ -111,7 +111,11 @@ class TestToolSearch(unittest.TestCase):
 
     def test_all_deferred_fail(self):
         # Mark all as deferred
-        all_deferred = {k: {**v, "defer_loading": True} for k, v in self.catalog.items()}
+        from typing import cast
+
+        all_deferred = {
+            k: cast(ToolManifest, {**v, "defer_loading": True}) for k, v in self.catalog.items()
+        }
         with self.assertRaises(SearchError) as cm:
             search_tools(all_deferred, "echo")
         self.assertEqual(cm.exception.type, "all_deferred")

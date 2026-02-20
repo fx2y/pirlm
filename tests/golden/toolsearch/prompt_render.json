@@ -1,0 +1,44 @@
+[
+  {
+    "description": "Reads content of a file. Use for analysis. When NOT to use: do not use for binary files.",
+    "input_examples": [
+      {
+        "path": "/etc/passwd"
+      }
+    ],
+    "input_schema": {
+      "properties": {
+        "path": {
+          "description": "The file path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "svc.read_file"
+  },
+  {
+    "description": "Echoes back the input. Use for testing. When NOT to use: do not use for logging.",
+    "input_examples": [
+      {
+        "msg": "hello"
+      }
+    ],
+    "input_schema": {
+      "properties": {
+        "msg": {
+          "description": "The message to echo",
+          "type": "string"
+        }
+      },
+      "required": [
+        "msg"
+      ],
+      "type": "object"
+    },
+    "name": "core.echo"
+  }
+]

@@ -49,8 +49,8 @@ class TestHydrateRender(unittest.TestCase):
         catalog = {"svc.tool1": self.tool1, "svc.tool2": self.tool2}
         hydrated = hydrate_tools(["svc.tool2", "svc.tool1"], catalog)
         self.assertEqual(len(hydrated), 2)
-        self.assertEqual(hydrated[0]["name"], "svc.tool2")
-        self.assertEqual(hydrated[1]["name"], "svc.tool1")
+        self.assertEqual(hydrated[0].get("name"), "svc.tool2")
+        self.assertEqual(hydrated[1].get("name"), "svc.tool1")
 
     def test_hydrate_tools_missing(self):
         catalog = {"svc.tool1": self.tool1}
@@ -62,7 +62,7 @@ class TestHydrateRender(unittest.TestCase):
     def test_load_selected_ok(self):
         selected = load_selected(["svc.tool1"], self.tools_dir)
         self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0]["name"], "svc.tool1")
+        self.assertEqual(selected[0].get("name"), "svc.tool1")
 
     def test_load_selected_missing(self):
         with self.assertRaises(HydrationError) as cm:
@@ -84,10 +84,10 @@ class TestHydrateRender(unittest.TestCase):
         self.assertEqual(len(rendered), 2)
 
         # Tool 1 should have 4 specified fields
-        self.assertEqual(rendered[0]["name"], "svc.tool1")
-        self.assertEqual(rendered[0]["description"], self.tool1["description"])
-        self.assertEqual(rendered[0]["input_schema"], self.tool1["input_schema"])
-        self.assertEqual(rendered[0]["input_examples"], self.tool1["input_examples"])
+        self.assertEqual(rendered[0].get("name"), "svc.tool1")
+        self.assertEqual(rendered[0].get("description"), self.tool1.get("description"))
+        self.assertEqual(rendered[0].get("input_schema"), self.tool1.get("input_schema"))
+        self.assertEqual(rendered[0].get("input_examples"), self.tool1.get("input_examples"))
         self.assertNotIn("tags", rendered[0])
         self.assertNotIn("defer_loading", rendered[0])
 

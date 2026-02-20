@@ -1,0 +1,22 @@
+{
+  "echo hello": [
+    "core.echo",
+    "svc.read_file",
+    "svc.list_files"
+  ],
+  "list files": [
+    "svc.list_files",
+    "svc.read_file",
+    "core.echo"
+  ],
+  "nonexistent": [
+    "core.echo",
+    "svc.read_file",
+    "svc.list_files"
+  ],
+  "read content": [
+    "svc.read_file",
+    "core.echo",
+    "svc.list_files"
+  ]
+}

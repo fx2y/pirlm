@@ -1,0 +1,16 @@
+{
+  "name": "core.echo",
+  "description": "Echoes back the input. Use for testing. When NOT to use: do not use for logging.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "msg": {"type": "string", "description": "The message to echo"}
+    },
+    "required": ["msg"]
+  },
+  "input_examples": [
+    {"msg": "hello"}
+  ],
+  "tags": ["utility"],
+  "defer_loading": false
+}

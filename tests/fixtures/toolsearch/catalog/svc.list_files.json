@@ -1,0 +1,16 @@
+{
+  "name": "svc.list_files",
+  "description": "Lists files in a directory. Use for exploration. When NOT to use: do not use for deletion.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "path": {"type": "string", "description": "The directory path"}
+    },
+    "required": ["path"]
+  },
+  "input_examples": [
+    {"path": "/home"}
+  ],
+  "tags": ["fs", "exploration"],
+  "defer_loading": true
+}

@@ -9,7 +9,7 @@ from pirml.toolsearch.search import search_tools
 
 
 def generate_dummy_catalog(n: int) -> dict[str, ToolManifest]:
-    catalog = {}
+    catalog: dict[str, ToolManifest] = {}
     for i in range(n):
         name = f"svc.tool_{i}"
         catalog[name] = {
@@ -30,7 +30,7 @@ def generate_dummy_catalog(n: int) -> dict[str, ToolManifest]:
     return catalog
 
 
-def main():
+def main() -> None:
     n_tools = 1000
     catalog = generate_dummy_catalog(n_tools)
 
@@ -44,7 +44,7 @@ def main():
 
     # 2. Benchmark Query
     queries = ["tool 500", "verb_5", "noun_10", "tag_1 dummy", "arg_2"]
-    latencies = []
+    latencies: list[float] = []
     for q in queries:
         start = time.perf_counter()
         search_tools(catalog, q, k=5)
@@ -57,8 +57,8 @@ def main():
             search_tools(catalog, q, k=5)
             latencies.append((time.perf_counter() - start) * 1000)
 
-    p50 = sorted(latencies)[len(latencies) // 2]
-    p95 = sorted(latencies)[-1]
+    p50: float = sorted(latencies)[len(latencies) // 2]
+    p95: float = sorted(latencies)[-1]
 
     bench_result = {
         "n_tools": n_tools,
@@ -81,7 +81,7 @@ def main():
     selected_tools = [catalog[name] for name in selected_names]
 
     # Simple byte-based "token" approximation
-    def canonical_json_bytes(obj):
+    def canonical_json_bytes(obj: object) -> int:
         return len(json.dumps(obj, sort_keys=True).encode("utf-8"))
 
     full_bytes = canonical_json_bytes(render_selected_tools(full_tools))

@@ -1,5 +1,7 @@
 import os
 import unittest
+from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
 from pirml.contracts.schemas import ToolManifest
 from pirml.toolsearch.search import (
@@ -14,9 +16,12 @@ from pirml.toolsearch.search import (
     search_with_cache,
 )
 
+if TYPE_CHECKING:
+    pass
+
 
 class StubExtBackend:
-    def search(self, catalog, query, k=5):
+    def search(self, catalog: Mapping[str, ToolManifest], query: str, k: int = 5) -> list[str]:
         if "fail" in query:
             raise SearchError("ext_fail", "External search failed")
         return ["svc.ext_tool"]

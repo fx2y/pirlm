@@ -50,17 +50,17 @@ description = "Validate JSONL trace format constraints"
 run = "python -m pirml --prog tests/prog_ok.py --out-dir out/ci && python -m scripts.trace_lint --trace out/ci/trace.ndjson"
 
 [tasks.schemas]
-description = "Validate final.json against JSON schema contract"
-run = "python -m pirml --prog tests/prog_ok.py --out-dir out/ci && python -m scripts.schema_lint"
+description = "Validate final.json and tool manifests against JSON schema contracts"
+run = "python -m pirml --prog tests/prog_ok.py --out-dir out/ci && python -m scripts.schema_lint && python -m scripts.tool_manifest_lint"
 
 [tasks.replay]
 description = "Check replay byte-stability and no-tool execution"
 run = "python -m scripts.replay_check"
 
 [tasks.fast]
-description = "Inner loop gate (<3s target): lint+subset unit+proto"
+description = "Inner loop gate (<3s target): lint + toolsearch tests"
 alias = ["f"]
-run = "ruff check pirml scripts tests && python -m unittest -q tests.test_protocol tests.test_replay tests.test_c0_reconcile && python -m pirml --prog tests/prog_ok.py --out-dir out/fast && python -m scripts.proto_lint --trace out/fast/trace.ndjson && python -m scripts.schema_lint"
+run = "ruff check pirml scripts tests && python -m unittest -q tests.test_toolsearch_lint tests.test_toolsearch_search tests.test_toolsearch_hydrate_render tests.test_toolsearch_bets tests.test_toolsearch_golden"
 
 [tasks.ci]
 description = "Full deterministic fail-fast gate ladder"

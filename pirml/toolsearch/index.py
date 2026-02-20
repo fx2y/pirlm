@@ -86,16 +86,11 @@ class BM25Index:
             self.idf[token] = math.log(1 + (self.N - df + 0.5) / (df + 0.5))
 
     def score(self, query: str) -> list[SearchHit]:
-        """Rank only docs containing query tokens."""
+        """Rank all docs in catalog. Docs with no matching tokens get 0.0 score."""
         q_tokens = tokenize(query)
-        # Find candidate doc indices
-        candidate_indices: set[int] = set()
-        for token in q_tokens:
-            if token in self.postings:
-                candidate_indices.update(self.postings[token])
 
         hits: list[SearchHit] = []
-        for i in candidate_indices:
+        for i in range(self.N):
             name = self.doc_names[i]
             score = 0.0
             tf_map = self.doc_term_freqs[i]
