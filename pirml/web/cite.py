@@ -1,46 +1,76 @@
 from __future__ import annotations
 
+import re
+from typing import TYPE_CHECKING
+
 from pirml.clock import SequenceClock
 
-from .types import CiteRow
+if TYPE_CHECKING:
+    from .types import ChunkRow, CiteRow
 
 
 def _clip_words(text: str, *, max_words: int) -> str:
     words = text.split()
-    return " ".join(words[:max_words])
+    if len(words) <= max_words:
+        return text
+    return " ".join(words[:max_words]) + "..."
+
+
+def find_quote_in_chunk(chunk: ChunkRow, *, query_hints: list[str]) -> str:
+    # B5a: quote span search
+    # Find the best sentence containing query hints
+    text = chunk["text"]
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    if not sentences:
+        return text[:100]
+
+    best_sentence = sentences[0]
+    max_matches = -1
+    for s in sentences:
+        matches = sum(1 for hint in query_hints if hint.lower() in s.lower())
+        if matches > max_matches:
+            max_matches = matches
+            best_sentence = s
+
+    return best_sentence
 
 
 def build_citation(
     *,
-    url: str,
-    doc_sha256: str,
-    chunk_id: str,
-    quote: str,
+    chunk: ChunkRow,
+    quote: str | None = None,
+    query_hints: list[str] | None = None,
     clock: SequenceClock,
     max_words: int = 25,
 ) -> CiteRow:
+    # C2.T7: Enforce url+doc_sha+chunk_id linkage
+    if quote is None:
+        if query_hints:
+            quote = find_quote_in_chunk(chunk, query_hints=query_hints)
+        else:
+            quote = chunk["text"]
+
     return {
-        "url": url,
-        "doc_sha256": doc_sha256,
-        "chunk_id": chunk_id,
+        "url": chunk["url"],
+        "doc_sha256": chunk["doc_sha256"],
+        "chunk_id": chunk["chunk_id"],
         "quote": _clip_words(quote, max_words=max_words),
         "retrieved_at": clock.now(),
     }
 
 
 def pack_citations(
-    claims: list[tuple[str, str, str, str]], *, clock: SequenceClock
+    chunks: list[ChunkRow], *, clock: SequenceClock, query: str = ""
 ) -> list[CiteRow]:
+    query_hints = re.findall(r"\w+", query.lower()) if query else []
     return [
         build_citation(
-            url=url,
-            doc_sha256=doc_sha256,
-            chunk_id=chunk_id,
-            quote=quote,
+            chunk=chunk,
+            query_hints=query_hints,
             clock=clock,
         )
-        for url, doc_sha256, chunk_id, quote in claims
+        for chunk in chunks
     ]
 
 
-__all__ = ["build_citation", "pack_citations"]
+__all__ = ["build_citation", "find_quote_in_chunk", "pack_citations"]

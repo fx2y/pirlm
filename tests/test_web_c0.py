@@ -30,29 +30,47 @@ class WebC0Tests(unittest.IsolatedAsyncioTestCase):
             _assert_runtime_tool_surface({"echo", "readfile", "bash", "web_fetch"})
 
     def test_citation_retrieved_at_uses_sequence_clock_deterministically(self) -> None:
-        claims = [
-            (
-                "https://example.com/a",
-                "a" * 64,
-                "chunk-001",
-                "one two three four five six seven eight nine ten "
+        chunks: list[dict[str, Any]] = [
+            {
+                "url": "https://example.com/a",
+                "doc_sha256": "a" * 64,
+                "chunk_id": "chunk-001",
+                "text": "one two three four five six seven eight nine ten "
                 "eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen "
                 "nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive "
                 "twentysix",
-            ),
-            ("https://example.com/b", "b" * 64, "chunk-002", "short quote"),
+                "kind": "p",
+                "path_hint": "p",
+                "score": 1.0,
+                "source_rank": 0,
+                "doc_rank": 0,
+            },
+            {
+                "url": "https://example.com/b",
+                "doc_sha256": "b" * 64,
+                "chunk_id": "chunk-002",
+                "text": "short quote",
+                "kind": "p",
+                "path_hint": "p",
+                "score": 1.0,
+                "source_rank": 1,
+                "doc_rank": 0,
+            },
         ]
 
         serialized_runs: list[str] = []
         for _ in range(3):
             clock = SequenceClock(start=1_700_000_000)
-            citations = pack_citations(claims, clock=clock)
+            citations = pack_citations(chunks, clock=clock)  # type: ignore
             serialized_runs.append(
                 json.dumps(citations, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
             )
             self.assertEqual(citations[0]["retrieved_at"], 1_700_000_000)
             self.assertEqual(citations[1]["retrieved_at"], 1_700_000_001)
-            self.assertLessEqual(len(citations[0]["quote"].split()), 25)
+            # Quote length check: "..." suffix might add to length if clipped, 
+            # but here we check words. _clip_words adds "..." if len > max_words.
+            quote0_words = citations[0]["quote"].replace("...", "").split()
+            self.assertLessEqual(len(quote0_words), 25)
 
         self.assertEqual(serialized_runs[0], serialized_runs[1])
         self.assertEqual(serialized_runs[1], serialized_runs[2])
