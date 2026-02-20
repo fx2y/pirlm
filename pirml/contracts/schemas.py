@@ -29,6 +29,7 @@ class CallFrame(TypedDict, total=False):
     id: str
     tool: str
     args: dict[str, Any]
+    timeout: float
     ts: int
     seq: int
     dir: str

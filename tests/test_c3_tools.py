@@ -38,10 +38,66 @@ class ToolContractTests(unittest.TestCase):
         self.assertEqual(res["error"]["type"], ErrorType.EXECUTION_ERROR)
         self.assertEqual(res["meta"]["exitCode"], 42)
 
-    def test_echo_arg_error(self):
+    def test_echo_arg_error(self) -> None:
         res: Any = self.registry.execute("echo", {"not_text": "foo"})
         self.assertFalse(res["ok"])
         self.assertEqual(res["error"]["type"], ErrorType.ARGUMENT_ERROR)
+
+    def test_bash_timeout(self) -> None:
+        res: Any = self.registry.execute("bash", {"command": "sleep 10"}, timeout=0.1)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"]["type"], ErrorType.TIMEOUT)
+        self.assertIn("timeout after 0.1s", res["error"]["msg"])
+
+    def test_execute_with_retry_respects_retryable(self) -> None:
+        from pirml.runtime.exec import execute_with_retry
+
+        # Mock tool that fails with retryable=True then False
+        class MockRegistry:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def execute(self, name: str, args: Any, timeout: float | None = None) -> Any:
+                _ = name, args, timeout
+                self.calls += 1
+                if self.calls == 1:
+                    return {
+                        "ok": False,
+                        "error": {"type": "transient", "msg": "fail", "retryable": True},
+                    }
+                return {"ok": True, "output": "success"}
+
+        reg = MockRegistry()
+        payload, retries = execute_with_retry(
+            reg,  # type: ignore
+            tool="test",
+            args={},
+            timeout=None,
+            max_retries=2,
+        )
+        self.assertTrue(payload["ok"])
+        self.assertEqual(retries, 1)
+        self.assertEqual(reg.calls, 2)
+
+        # Mock tool that fails with retryable=False
+        reg2 = MockRegistry()
+
+        def fail_non_retryable(name: str, args: Any, timeout: Any = None) -> Any:
+            _ = name, args, timeout
+            reg2.calls += 1
+            return {"ok": False, "error": {"type": "fatal", "msg": "fail", "retryable": False}}
+
+        reg2.execute = fail_non_retryable  # type: ignore
+        payload, retries = execute_with_retry(
+            reg2,  # type: ignore
+            tool="test",
+            args={},
+            timeout=None,
+            max_retries=2,
+        )
+        self.assertFalse(payload["ok"])
+        self.assertEqual(retries, 0)
+        self.assertEqual(reg2.calls, 1)
 
 
 if __name__ == "__main__":

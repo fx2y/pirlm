@@ -39,7 +39,8 @@ class ReconcileTests(unittest.TestCase):
         registry = ToolRegistry()
         fail_count = 0
 
-        def fail_once(args: Mapping[str, Any]) -> ToolResult:
+        def fail_once(args: Mapping[str, Any], timeout: float | None = None) -> ToolResult:
+            _ = timeout
             nonlocal fail_count
             fail_count += 1
             if fail_count == 1:

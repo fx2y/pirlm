@@ -33,7 +33,7 @@ class ToolResult(TypedDict, total=False):
     meta: dict[str, Any]
 
 
-ToolFn = Callable[[Mapping[str, JSONValue]], ToolResult]
+ToolFn = Callable[[Mapping[str, JSONValue], float | None], ToolResult]
 
 
 class ToolRegistry:
@@ -43,7 +43,9 @@ class ToolRegistry:
     def register(self, name: str, fn: ToolFn) -> None:
         self._tools[name] = fn
 
-    def execute(self, name: str, args: Mapping[str, JSONValue]) -> ToolResult:
+    def execute(
+        self, name: str, args: Mapping[str, JSONValue], timeout: float | None = None
+    ) -> ToolResult:
         """S.TL1: Tool choke-point"""
         if os.environ.get("PIRML_BLOCK_TOOLS") == "1":
             return {
@@ -64,7 +66,7 @@ class ToolRegistry:
                 },
             }
         try:
-            return self._tools[name](args)
+            return self._tools[name](args, timeout)
         except Exception as exc:  # noqa: BLE001
             return {
                 "ok": False,
@@ -96,7 +98,8 @@ def _stable_env() -> dict[str, str]:
     return stable
 
 
-def tool_echo(args: Mapping[str, JSONValue]) -> ToolResult:
+def tool_echo(args: Mapping[str, JSONValue], timeout: float | None = None) -> ToolResult:
+    _ = timeout
     try:
         text = _expect_str(args, "text")
         return {"ok": True, "output": text}
@@ -107,7 +110,8 @@ def tool_echo(args: Mapping[str, JSONValue]) -> ToolResult:
         }
 
 
-def tool_readfile(args: Mapping[str, JSONValue]) -> ToolResult:
+def tool_readfile(args: Mapping[str, JSONValue], timeout: float | None = None) -> ToolResult:
+    _ = timeout
     try:
         path_str = _expect_str(args, "path")
         path = Path(path_str)
@@ -152,7 +156,7 @@ def tool_readfile(args: Mapping[str, JSONValue]) -> ToolResult:
         }
 
 
-def tool_bash(args: Mapping[str, JSONValue]) -> ToolResult:
+def tool_bash(args: Mapping[str, JSONValue], timeout: float | None = None) -> ToolResult:
     try:
         command = _expect_str(args, "command")
         # C3.T4: Structured output
@@ -163,6 +167,7 @@ def tool_bash(args: Mapping[str, JSONValue]) -> ToolResult:
             env=_stable_env(),
             shell=True,
             text=True,
+            timeout=timeout,
         )
 
         output = completed.stdout
@@ -186,6 +191,15 @@ def tool_bash(args: Mapping[str, JSONValue]) -> ToolResult:
 
         return {"ok": True, "output": output, "meta": meta}
 
+    except subprocess.TimeoutExpired:
+        return {
+            "ok": False,
+            "error": {
+                "type": ErrorType.TIMEOUT,
+                "msg": f"tool timeout after {timeout}s",
+                "retryable": False,
+            },
+        }
     except ValueError as exc:
         return {
             "ok": False,

@@ -26,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--out-dir", default="out", help="Output directory for trace.ndjson/final.json"
     )
     parser.add_argument("--max-line-bytes", type=int, default=MAX_LINE_BYTES_DEFAULT)
+    parser.add_argument("--timeout", type=float, default=30.0, help="Global run timeout in seconds")
     return parser
 
 
@@ -33,6 +34,10 @@ def _run(args: argparse.Namespace) -> int:
     max_line_bytes = int(args.max_line_bytes)
     if max_line_bytes <= 0:
         raise ValueError("--max-line-bytes must be > 0")
+
+    timeout = float(args.timeout)
+    if timeout <= 0:
+        raise ValueError("--timeout must be > 0")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -49,6 +54,7 @@ def _run(args: argparse.Namespace) -> int:
             replay_frames=replay_frames,
             clock=SequenceClock.from_env(),
             max_line_bytes=max_line_bytes,
+            timeout=timeout,
         )
     else:
         if not args.prog:
@@ -58,6 +64,7 @@ def _run(args: argparse.Namespace) -> int:
             registry=default_registry(),
             clock=SequenceClock.from_env(),
             max_line_bytes=max_line_bytes,
+            timeout=timeout,
         )
 
     normalized = write_trace(trace_path, output.frames, max_line_bytes=max_line_bytes)

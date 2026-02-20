@@ -3,12 +3,15 @@ from __future__ import annotations
 import copy
 import hashlib
 import os
+import queue
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 from ..clock import SequenceClock
 from ..contracts.schemas import ErrorObject, FinalResult, ResultRow
@@ -68,15 +71,17 @@ class _ReplayPlan:
     source_final_result: Mapping[str, Any] | None
 
 
+@dataclass(frozen=True)
+class _FrameEvent:
+    kind: str
+    payload: JSONObject | Exception | None = None
+
+
 def new_call_id(index: int) -> str:
     return f"c{index:05d}"
 
 
 def _sha256_val(val: Any) -> str:
-    return hashlib.sha256(canonical_json(val).encode("utf-8")).hexdigest()
-
-
-def _sha256_json(val: Any) -> str:
     return hashlib.sha256(canonical_json(val).encode("utf-8")).hexdigest()
 
 
@@ -168,17 +173,90 @@ def _shutdown_process(proc: subprocess.Popen[str], frames: list[JSONObject]) -> 
         proc.stderr.close()
 
 
-def _require_call_fields(frame: Mapping[str, Any]) -> tuple[str, str, Mapping[str, Any]]:
+def _remaining_timeout_seconds(start_time: float, timeout: float) -> float:
+    remaining = timeout - (time.monotonic() - start_time)
+    if remaining <= 0:
+        raise ProtocolError(f"global timeout reached ({timeout}s)")
+    return remaining
+
+
+def _start_frame_reader(
+    proc: subprocess.Popen[str],
+) -> tuple[queue.Queue[_FrameEvent], threading.Thread]:
+    stdout = proc.stdout
+    if stdout is None:
+        raise ProtocolError("program stdout is not available")
+    text_stdout = cast(TextIO, stdout)
+
+    events: queue.Queue[_FrameEvent] = queue.Queue()
+
+    def _pump() -> None:
+        while True:
+            try:
+                frame = read_frame(text_stdout)
+            except EOFError:
+                events.put(_FrameEvent("eof"))
+                return
+            except Exception as exc:  # noqa: BLE001
+                events.put(_FrameEvent("error", exc))
+                return
+            events.put(_FrameEvent("frame", frame))
+
+    reader = threading.Thread(target=_pump, name="pirml-frame-reader", daemon=True)
+    reader.start()
+    return events, reader
+
+
+def _read_program_frame(
+    events: queue.Queue[_FrameEvent],
+    *,
+    start_time: float,
+    timeout: float,
+    poll_step: float = 0.05,
+) -> JSONObject:
+    while True:
+        wait_s = min(poll_step, _remaining_timeout_seconds(start_time, timeout))
+        try:
+            event = events.get(timeout=wait_s)
+        except queue.Empty:
+            continue
+
+        if event.kind == "frame":
+            payload = event.payload
+            if isinstance(payload, dict):
+                return payload
+            raise ProtocolError("reader returned non-object frame")
+        if event.kind == "eof":
+            raise EOFError("stream closed")
+        if event.kind == "error":
+            payload = event.payload
+            if isinstance(payload, Exception):
+                raise payload
+            raise ProtocolError("reader thread failed")
+        raise ProtocolError(f"unknown reader event: {event.kind}")
+
+
+def _require_call_fields(
+    frame: Mapping[str, Any],
+) -> tuple[str, str, Mapping[str, Any], float | None]:
     call_id = frame.get("id")
     tool = frame.get("tool")
     args = frame.get("args")
+    timeout_val = frame.get("timeout")
     if not isinstance(call_id, str) or call_id == "":
         raise ProtocolError("call.id must be non-empty string")
     if not isinstance(tool, str) or tool == "":
         raise ProtocolError("call.tool must be non-empty string")
     if not isinstance(args, Mapping):
         raise ProtocolError("call.args must be an object")
-    return call_id, tool, cast(Mapping[str, Any], args)
+
+    timeout: float | None = None
+    if timeout_val is not None:
+        if not isinstance(timeout_val, (int, float)):
+            raise ProtocolError("call.timeout must be a number")
+        timeout = float(timeout_val)
+
+    return call_id, tool, cast(Mapping[str, Any], args), timeout
 
 
 def _build_result_frame(
@@ -231,16 +309,17 @@ def _result_row(call_id: str, tool: str, result_frame: Mapping[str, Any]) -> Res
     return row
 
 
-def _execute_with_retry(
+def execute_with_retry(
     registry: ToolRegistry,
     *,
     tool: str,
     args: Mapping[str, Any],
+    timeout: float | None,
     max_retries: int,
 ) -> tuple[Mapping[str, Any], int]:
     retries = 0
     while True:
-        payload = registry.execute(tool, args)
+        payload = registry.execute(tool, args, timeout=timeout)
         if payload.get("ok"):
             return payload, retries
 
@@ -318,8 +397,8 @@ def _replay_parity_meta(
 ) -> JSONObject | None:
     if source_final_result is None:
         return None
-    expected_sha = _sha256_json(source_final_result)
-    actual_sha = _sha256_json(actual_final_result)
+    expected_sha = _sha256_val(source_final_result)
+    actual_sha = _sha256_val(actual_final_result)
     return {
         "replay_expected_final_sha256": expected_sha,
         "replay_actual_final_sha256": actual_sha,
@@ -348,8 +427,9 @@ def run_live(
     timeout: float = 30.0,
 ) -> RunOutput:
     """S.EX2, S.EX3: Subprocess supervisor loop"""
-    _ = timeout
+    start_time = time.monotonic()
     proc = _spawn_program(program_path, block_tools=False)
+    frame_events, frame_reader = _start_frame_reader(proc)
 
     frames: list[JSONObject] = []
     result_rows: list[ResultRow] = []
@@ -360,9 +440,15 @@ def run_live(
     try:
         while True:
             try:
-                frame = read_frame(proc.stdout)  # type: ignore
+                frame = _read_program_frame(
+                    frame_events,
+                    start_time=start_time,
+                    timeout=timeout,
+                )
             except EOFError:
                 break
+            except ProtocolError:
+                raise
             except Exception as exc:
                 raise ProtocolError(f"Supervisor read failed: {exc}") from exc
 
@@ -378,11 +464,12 @@ def run_live(
 
             op = inbound_frame.get("op")
             if op == "call":
-                call_id, tool, args = _require_call_fields(frame)
-                payload, retries = _execute_with_retry(
+                call_id, tool, args, tool_timeout = _require_call_fields(frame)
+                payload, retries = execute_with_retry(
                     registry,
                     tool=tool,
                     args=args,
+                    timeout=tool_timeout,
                     max_retries=2,
                 )
                 res_frame = _build_result_frame(
@@ -412,6 +499,7 @@ def run_live(
 
     finally:
         _shutdown_process(proc, frames)
+        frame_reader.join(timeout=0.2)
 
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)
@@ -435,9 +523,10 @@ def run_replay(
     timeout: float = 30.0,
 ) -> RunOutput:
     """C4.T3/C4.T4: Replay mode execution at adapter-boundary cassette."""
-    _ = timeout
+    start_time = time.monotonic()
     plan = _build_replay_plan(replay_frames)
     proc = _spawn_program(program_path, block_tools=True)
+    frame_events, frame_reader = _start_frame_reader(proc)
 
     frames: list[JSONObject] = []
     result_rows: list[ResultRow] = []
@@ -449,9 +538,17 @@ def run_replay(
     try:
         while True:
             try:
-                frame = read_frame(proc.stdout)  # type: ignore
+                frame = _read_program_frame(
+                    frame_events,
+                    start_time=start_time,
+                    timeout=timeout,
+                )
             except EOFError:
                 break
+            except ProtocolError:
+                raise
+            except Exception as exc:
+                raise ProtocolError(f"Supervisor read failed: {exc}") from exc
 
             inbound_with_ts = dict(frame)
             inbound_with_ts["ts"] = clock.now()
@@ -465,7 +562,7 @@ def run_replay(
 
             op = inbound_frame.get("op")
             if op == "call":
-                call_id, tool, _args = _require_call_fields(frame)
+                call_id, tool, _args, _tool_timeout = _require_call_fields(frame)
                 if call_index >= len(plan.call_ids):
                     raise ProtocolError(f"Replay error: unexpected extra call id {call_id}")
                 expected_id = plan.call_ids[call_index]
@@ -511,6 +608,7 @@ def run_replay(
 
     finally:
         _shutdown_process(proc, frames)
+        frame_reader.join(timeout=0.2)
 
     if not frames or frames[-1].get("op") != "final":
         final_frame = _fallback_final(clock, envelope, result_rows)

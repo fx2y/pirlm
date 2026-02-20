@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
+import threading
 from collections.abc import Iterable, Mapping, Sequence
+from contextlib import suppress
 from typing import Any, TextIO, cast
 
 
@@ -54,19 +57,21 @@ def write_frame(
 
 
 _program_call_count = 0
+_program_call_lock = threading.Lock()
 
 
 def call(tool: str, args: Mapping[str, Any]) -> JSONObject:
-    """S.PG1: Program-side call helper"""
+    """S.PG1: Program-side call helper (blocking)"""
     global _program_call_count
-    _program_call_count += 1
-    call_id = f"c{_program_call_count:05d}"
+    with _program_call_lock:
+        _program_call_count += 1
+        call_id = f"c{_program_call_count:05d}"
     frame: JSONObject = {
         "op": "call",
         "id": call_id,
         "tool": tool,
         "args": args,
-        "ts": 0,  # Supervisor will overwrite ts anyway, but protocol reqs it
+        "ts": 0,
     }
     write_frame(sys.stdout, frame)
 
@@ -75,11 +80,77 @@ def call(tool: str, args: Mapping[str, Any]) -> JSONObject:
         resp = read_frame(sys.stdin)
         if resp.get("op") == "result":
             if resp.get("id") != call_id:
+                # If we get interleaved results in blocking call, it's a protocol violation
+                # or missing parallel support.
                 raise ProtocolError(f"expected result for {call_id}, got {resp.get('id')}")
             return resp
-        # Skip other frames (like logs if any)
         if resp.get("op") == "final":
             raise ProtocolError("received final while waiting for result")
+
+
+class AsyncRpcClient:
+    """S.PG2: Async fan-out support"""
+
+    def __init__(self, reader: TextIO = sys.stdin, writer: TextIO = sys.stdout):
+        self.reader = reader
+        self.writer = writer
+        self._pending: dict[str, asyncio.Future[JSONObject]] = {}
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._call_count = 0
+        self._lock = threading.Lock()
+        self._read_task: asyncio.Task[None] | None = None
+
+    async def start(self) -> None:
+        self._loop = asyncio.get_running_loop()
+        self._read_task = asyncio.create_task(self._reader_loop())
+
+    async def stop(self) -> None:
+        if self._read_task:
+            self._read_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._read_task
+            self._read_task = None
+
+    async def _reader_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        while True:
+            try:
+                # read_frame is blocking, run in executor
+                frame = await loop.run_in_executor(None, read_frame, self.reader)
+                op = frame.get("op")
+                if op == "result":
+                    call_id = frame.get("id")
+                    if isinstance(call_id, str) and call_id in self._pending:
+                        self._pending[call_id].set_result(frame)
+                        del self._pending[call_id]
+                elif op == "final":
+                    # Should not really happen inbound to program unless supervisor is weird
+                    pass
+            except EOFError:
+                break
+            except Exception as exc:
+                for fut in self._pending.values():
+                    if not fut.done():
+                        fut.set_exception(exc)
+                break
+
+    async def call(self, tool: str, args: Mapping[str, Any]) -> JSONObject:
+        with self._lock:
+            self._call_count += 1
+            call_id = f"c{self._call_count:05d}"
+
+        frame: JSONObject = {
+            "op": "call",
+            "id": call_id,
+            "tool": tool,
+            "args": args,
+            "ts": 0,
+        }
+        loop = self._loop if self._loop is not None else asyncio.get_running_loop()
+        fut = loop.create_future()
+        self._pending[call_id] = fut
+        write_frame(self.writer, frame)
+        return await fut
 
 
 def send_final(ok: bool, result: Mapping[str, Any]) -> None:

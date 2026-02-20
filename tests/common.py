@@ -15,6 +15,7 @@ def run_cli(
     out_dir: Path,
     replay: Path | None = None,
     max_line_bytes: int | None = None,
+    timeout: float | None = None,
     env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     cmd = [
@@ -30,6 +31,8 @@ def run_cli(
         cmd.extend(["--replay", str(replay)])
     if max_line_bytes is not None:
         cmd.extend(["--max-line-bytes", str(max_line_bytes)])
+    if timeout is not None:
+        cmd.extend(["--timeout", str(timeout)])
 
     return subprocess.run(
         cmd,
