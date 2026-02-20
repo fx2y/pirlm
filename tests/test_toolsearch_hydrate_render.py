@@ -96,13 +96,13 @@ class TestHydrateRender(unittest.TestCase):
         self.assertNotIn("input_examples", rendered[1])
 
     def test_enforce_client_search_mode_fail(self):
-        # tool1 has examples, so server_side_search=True should fail
+        # include_examples=True, so server_side_search=True should fail
         with self.assertRaises(RenderError) as cm:
-            enforce_client_search_mode(True, [self.tool1])
+            enforce_client_search_mode(True, True)
         self.assertEqual(cm.exception.type, "invalid_policy_combo")
 
     def test_enforce_client_search_mode_ok(self):
-        # tool2 has no examples, so server_side_search=True is OK
-        enforce_client_search_mode(True, [self.tool2])
+        # include_examples=False, so server_side_search=True is OK
+        enforce_client_search_mode(True, False)
         # server_side_search=False is always OK even with examples
-        enforce_client_search_mode(False, [self.tool1])
+        enforce_client_search_mode(False, True)

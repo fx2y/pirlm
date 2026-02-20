@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any, cast
 
 from pirml.runtime.lint import lint_catalog, lint_manifest
 from pirml.runtime.load import load_catalog
@@ -50,17 +51,14 @@ class TestToolSearchLint(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
 
-            def write_tool(name: str, hot: bool) -> None:
-                (d / f"{name}.json").write_text(
-                    json.dumps(
-                        {
-                            "name": f"svc.{name}",
-                            "description": "Sentence one. Sentence two. When NOT to use: none.",
-                            "input_schema": {},
-                            "defer_loading": not hot,
-                        }
-                    )
-                )
+            def write_tool(name: str, hot: bool, content: dict[str, Any] | None = None) -> None:
+                m = content or {
+                    "name": f"svc.{name}",
+                    "description": "Sentence one. Sentence two. When NOT to use: none. Extra padding to reach 30 chars.",
+                    "input_schema": {},
+                    "defer_loading": not hot,
+                }
+                (d / f"{name}.json").write_text(json.dumps(m))
 
             # Case 1: All deferred (should fail C1 and C2)
             write_tool("t1", hot=False)
@@ -85,6 +83,53 @@ class TestToolSearchLint(unittest.TestCase):
             catalog = load_catalog(d)
             errors = lint_catalog(catalog)
             self.assertTrue(any(e["code"] == "C2" for e in errors))
+
+    def test_strict_validation(self) -> None:
+        # Unknown key
+        m_unknown = cast(
+            "dict[str, Any]",
+            {
+                "name": "svc.tool",
+                "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+                "input_schema": {},
+                "unknown_field": 123,
+            },
+        )
+        errors = lint_manifest(m_unknown)
+        self.assertTrue(any(e["code"] == "schema" and "unknown_field" in e["msg"] for e in errors))
+
+        # Bad example vs schema
+        m_bad_example = {
+            "name": "svc.tool",
+            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+            "input_schema": {"type": "object", "properties": {"a": {"type": "string"}}},
+            "input_examples": [{"b": 1}],
+        }
+        errors = lint_manifest(m_bad_example)
+        self.assertTrue(any(e["code"] == "example_invalid" for e in errors))
+
+    def test_strict_loader(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            (d / "t1.json").write_text(
+                '{"name": "svc.t1", "description": "...", "input_schema": {}}'
+            )
+            (d / "t2.json").write_text(
+                '{"name": "svc.t1", "description": "...", "input_schema": {}}'
+            )
+
+            # Duplicate name should raise HydrationError in strict mode
+            from pirml.toolsearch.loader import HydrationError
+
+            with self.assertRaises(HydrationError) as cm:
+                load_catalog(d, strict=True)
+            self.assertEqual(cm.exception.type, "duplicate_name")
+
+            # Malformed JSON
+            (d / "t2.json").write_text("{malformed")
+            with self.assertRaises(HydrationError) as cm:
+                load_catalog(d, strict=True)
+            self.assertEqual(cm.exception.type, "load_failed")
 
 
 if __name__ == "__main__":

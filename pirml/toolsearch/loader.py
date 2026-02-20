@@ -9,11 +9,14 @@ from pirml.contracts.schemas import ToolManifest
 from pirml.runtime.rpc import canonical_json
 
 
-def load_catalog(tools_dir: str | Path) -> dict[str, ToolManifest]:
+def load_catalog(tools_dir: str | Path, strict: bool = False) -> dict[str, ToolManifest]:
     """C1.T2: Canonical tool loader.
     Same input files -> byte-identical catalog object.
+    G.P1.1: Added strict mode for linting/CI.
     """
     catalog: dict[str, ToolManifest] = {}
+    name_to_path: dict[str, Path] = {}
+
     # glob is not guaranteed to be sorted on all OS
     paths = sorted(Path(tools_dir).glob("*.json"))
     for path in paths:
@@ -21,9 +24,27 @@ def load_catalog(tools_dir: str | Path) -> dict[str, ToolManifest]:
             with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             name = data.get("name")
-            if isinstance(name, str):
-                catalog[name] = data
-        except (json.JSONDecodeError, OSError):
+            if not isinstance(name, str):
+                if strict:
+                    raise HydrationError(
+                        "missing_name", f"Manifest at {path} missing 'name' string"
+                    )
+                continue
+
+            if name in name_to_path:
+                if strict:
+                    raise HydrationError(
+                        "duplicate_name",
+                        f"Duplicate tool name '{name}' found in {path} and {name_to_path[name]}",
+                    )
+                # In non-strict mode, we skip duplicates to stay permissive
+                continue
+
+            catalog[name] = data
+            name_to_path[name] = path
+        except (json.JSONDecodeError, OSError) as e:
+            if strict:
+                raise HydrationError("load_failed", f"Failed to load {path}: {e}") from e
             # Loader is permissive; Linter is strict
             continue
 

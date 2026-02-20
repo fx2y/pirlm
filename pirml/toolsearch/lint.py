@@ -7,7 +7,9 @@ from pirml.contracts.schemas import ManifestError, ToolManifest
 
 
 def lint_manifest(manifest: Any) -> list[ManifestError]:
-    """C1.T3: Authoring quality gates for a single manifest."""
+    """C1.T3: Authoring quality gates for a single manifest.
+    G.P0.2: Enforce strict schema and unknown key rejection.
+    """
     errors: list[ManifestError] = []
 
     if not isinstance(manifest, dict):
@@ -16,51 +18,99 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
 
     m = cast("dict[str, Any]", manifest)
 
-    # unique dotted name <= 64
+    # 1. Enforce strict root keys (additionalProperties: false)
+    allowed_keys = {
+        "name",
+        "description",
+        "input_schema",
+        "input_examples",
+        "tags",
+        "defer_loading",
+        "aliases",
+        "verbs",
+        "nouns",
+    }
+    required_keys = {"name", "description", "input_schema"}
+
+    for key in m:
+        if key not in allowed_keys:
+            errors.append({"code": "schema", "msg": f"unknown root key: {key}", "path": key})
+
+    for key in required_keys:
+        if key not in m:
+            code = "schema"
+            if key == "name":
+                code = "M1"
+            elif key == "description":
+                code = "M2"
+            elif key == "input_schema":
+                code = "M3"
+            errors.append({"code": code, "msg": f"missing required key: {key}", "path": key})
+
+    # name: namespace dotted; <=64
     name = m.get("name")
-    if not isinstance(name, str):
-        errors.append({"code": "M1", "msg": "name must be a string", "path": "name"})
-    else:
-        if len(name) > 64:
-            errors.append({"code": "M1", "msg": f"name '{name}' exceeds 64 chars", "path": "name"})
-        # Spec: "namespace dotted; <=64; no spaces"
-        if not re.match(r"^[a-z0-9_]+(\.[a-z0-9_]+)+$", name):
-            errors.append(
-                {
-                    "code": "M1",
-                    "msg": f"name '{name}' must be dotted namespace (e.g. svc.tool)",
-                    "path": "name",
-                }
-            )
+    if name is not None:
+        if not isinstance(name, str):
+            errors.append({"code": "M1", "msg": "name must be a string", "path": "name"})
+        else:
+            if len(name) > 64:
+                errors.append(
+                    {"code": "M1", "msg": f"name '{name}' exceeds 64 chars", "path": "name"}
+                )
+            if not re.match(r"^[a-z0-9_]+(\.[a-z0-9_]+)+$", name):
+                errors.append(
+                    {
+                        "code": "M1",
+                        "msg": f"name '{name}' must be dotted namespace (e.g. svc.tool)",
+                        "path": "name",
+                    }
+                )
 
-    # desc >= 3 sentences incl not-when token
+    # description: >=3 sentences; >=30 chars; include guidance
     desc = m.get("description")
-    if not isinstance(desc, str):
-        errors.append({"code": "M2", "msg": "description must be a string", "path": "description"})
-    else:
-        # Simple sentence count: split by . ! ?
-        sentences = [s.strip() for s in re.split(r"[.!?]", desc) if s.strip()]
-        if len(sentences) < 3:
+    if desc is not None:
+        if not isinstance(desc, str):
             errors.append(
-                {"code": "M2", "msg": "description must have >= 3 sentences", "path": "description"}
+                {"code": "M2", "msg": "description must be a string", "path": "description"}
             )
+        else:
+            if len(desc) < 30:
+                errors.append(
+                    {
+                        "code": "M2",
+                        "msg": f"description must be at least 30 chars, got {len(desc)}",
+                        "path": "description",
+                    }
+                )
+            # Simple sentence count: split by . ! ?
+            sentences = [s.strip() for s in re.split(r"[.!?]", desc) if s.strip()]
+            if len(sentences) < 3:
+                errors.append(
+                    {
+                        "code": "M2",
+                        "msg": "description must have >= 3 sentences",
+                        "path": "description",
+                    }
+                )
 
-        # Anthropic docs: "when NOT to use" token or similar is good
-        desc_l = desc.lower()
-        if not any(t in desc_l for t in ["when not to use", "not-when", "avoid", "instead of"]):
-            errors.append(
-                {
-                    "code": "M2",
-                    "msg": "description must include 'when NOT to use' guidance",
-                    "path": "description",
-                }
-            )
+            desc_l = desc.lower()
+            if not any(t in desc_l for t in ["when not to use", "not-when", "avoid", "instead of"]):
+                errors.append(
+                    {
+                        "code": "M2",
+                        "msg": "description must include 'when NOT to use' guidance",
+                        "path": "description",
+                    }
+                )
 
-    # input_schema required
-    if "input_schema" not in m:
-        errors.append({"code": "M3", "msg": "input_schema is required", "path": "input_schema"})
+    # input_schema: object
+    schema = m.get("input_schema")
+    if schema is not None and not isinstance(schema, dict):
+        errors.append(
+            {"code": "M3", "msg": "input_schema must be an object", "path": "input_schema"}
+        )
 
-    # input_examples validation
+    # input_examples: list of objects
     examples = m.get("input_examples")
     if examples is not None:
         if not isinstance(examples, list):
@@ -77,7 +127,31 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
                             "path": f"input_examples[{i}]",
                         }
                     )
-                # TODO: Implement deep schema validation if a library becomes available
+                else:
+                    # G.P0.2: basic validation of example vs schema
+                    ex_dict = cast(dict[str, Any], ex)
+                    if isinstance(schema, dict) and "properties" in schema:
+                        props = cast(dict[str, Any], schema["properties"])
+                        for arg in ex_dict:
+                            if arg not in props:
+                                errors.append(
+                                    {
+                                        "code": "example_invalid",
+                                        "msg": f"example {i} uses unknown property '{arg}'",
+                                        "path": f"input_examples[{i}]",
+                                    }
+                                )
+
+    # other types
+    for key, t in [
+        ("tags", list),
+        ("aliases", list),
+        ("verbs", list),
+        ("nouns", list),
+        ("defer_loading", bool),
+    ]:
+        if key in m and not isinstance(m[key], t):
+            errors.append({"code": "schema", "msg": f"{key} must be a {t.__name__}", "path": key})
 
     return errors
 

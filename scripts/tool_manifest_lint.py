@@ -25,7 +25,7 @@ def main() -> int:
         return 2
 
     try:
-        catalog = load_catalog(tools_dir)
+        catalog = load_catalog(tools_dir, strict=True)
         if not catalog:
             # Empty catalog is a failure in this context
             print(f"Error: no manifests found in {tools_dir}", file=sys.stderr)

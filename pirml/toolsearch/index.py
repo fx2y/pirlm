@@ -51,7 +51,8 @@ class BM25Index:
         self.k1 = k1
         self.b = b
         self.catalog = catalog
-        self.doc_names = list(catalog.keys())
+        # Keep doc order canonical regardless of input mapping insertion order.
+        self.doc_names = sorted(catalog.keys())
         self.N = len(self.doc_names)
 
         self.doc_term_freqs: list[dict[str, int]] = []
@@ -59,12 +60,17 @@ class BM25Index:
         self.df: dict[str, int] = {}
         self.idf: dict[str, float] = {}
         self.postings: dict[str, list[int]] = {}
+        self.doc_hot_ranks: list[int] = []
+        self.doc_arg_counts: list[int] = []
 
         for i, name in enumerate(self.doc_names):
             manifest = catalog[name]
             text = tool_doc_fields(manifest)
             tokens = tokenize(text)
             self.doc_lengths.append(len(tokens))
+            self.doc_hot_ranks.append(0 if not manifest.get("defer_loading", True) else 1)
+            schema_m: dict[str, Any] = manifest.get("input_schema") or {}
+            self.doc_arg_counts.append(len(schema_m.get("properties") or {}))
 
             tf: dict[str, int] = {}
             seen_tokens_in_doc: set[str] = set()
@@ -88,32 +94,35 @@ class BM25Index:
     def score(self, query: str) -> list[SearchHit]:
         """Rank all docs in catalog. Docs with no matching tokens get 0.0 score."""
         q_tokens = tokenize(query)
+        score_by_doc: dict[int, float] = {}
+        candidate_docs: set[int] = set()
+        for token in q_tokens:
+            candidate_docs.update(self.postings.get(token, ()))
 
-        hits: list[SearchHit] = []
-        for i in range(self.N):
-            name = self.doc_names[i]
-            score = 0.0
+        for i in candidate_docs:
             tf_map = self.doc_term_freqs[i]
             dl = self.doc_lengths[i]
-
+            score = 0.0
             for token in q_tokens:
                 if token not in self.idf:
                     continue
-
                 tf = tf_map.get(token, 0)
                 if tf == 0:
                     continue
-
                 # S.IDX2: BM25 score formula
                 idf = self.idf[token]
                 score += idf * (
                     (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avdl))
                 )
+            score_by_doc[i] = score
 
-            m = self.catalog[name]
-            hot_rank: int = 0 if not m.get("defer_loading", True) else 1
-            schema_m: dict[str, Any] = m.get("input_schema") or {}
-            arg_count: int = len(schema_m.get("properties") or {})
-            hits.append(SearchHit(name, score, hot_rank, arg_count, name))
-
-        return hits
+        return [
+            SearchHit(
+                self.doc_names[i],
+                score_by_doc.get(i, 0.0),
+                self.doc_hot_ranks[i],
+                self.doc_arg_counts[i],
+                self.doc_names[i],
+            )
+            for i in range(self.N)
+        ]

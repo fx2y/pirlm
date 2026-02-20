@@ -28,10 +28,18 @@ def render_selected_tools(tools: list[ToolManifest]) -> list[dict[str, Any]]:
     return rendered
 
 
-def enforce_client_search_mode(server_side_search: bool, tools: list[ToolManifest]) -> None:
-    """C3.T4: Hard guard: if examples enabled then forbid server-side ToolSearch mode."""
-    if server_side_search and any("input_examples" in tool for tool in tools):
+def enforce_client_search_mode(use_server_search: bool, include_examples: bool) -> None:
+    """C3.T4: Hard guard: if examples enabled then forbid server-side ToolSearch mode.
+    G.P2.1: API refined to use explicit flag.
+    """
+    if use_server_search and include_examples:
         raise RenderError(
             "invalid_policy_combo",
             "ToolSearch incompatible with tool use examples.",
         )
+
+
+def enforce_client_search_mode_compat(server_side_search: bool, tools: list[ToolManifest]) -> None:
+    """Legacy wrapper for C3.T4 contract."""
+    include_examples = any("input_examples" in tool for tool in tools)
+    enforce_client_search_mode(server_side_search, include_examples)

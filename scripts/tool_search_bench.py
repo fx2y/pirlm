@@ -68,9 +68,19 @@ def main() -> None:
         "context": {"os": os.name, "timestamp": time.time()},
     }
 
+    # G.P2.3: Canonical output for stable CI diffs
+    canonical_bench = {
+        "n_tools": n_tools,
+        "status": "PASS" if p50 < 15 and idx_ms < 50 else "FAIL",
+        "perf_budget_ms": {"p50": 15, "index": 50},
+    }
+
     os.makedirs("out", exist_ok=True)
     with open("out/toolsearch_bench.json", "w") as f:
         json.dump(bench_result, f, indent=2)
+
+    with open("out/toolsearch_bench.canonical.json", "w") as f:
+        json.dump(canonical_bench, f, indent=2, sort_keys=True)
 
     print(f"Index built in {idx_ms:.2f}ms")
     print(f"Query p50: {p50:.2f}ms")

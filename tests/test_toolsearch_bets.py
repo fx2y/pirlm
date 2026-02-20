@@ -67,6 +67,26 @@ class TestToolSearchBets(unittest.TestCase):
         results = search_tools(self.catalog, query)
         self.assertEqual(results[0], "svc.list_files")
 
+    def test_rewrite_map_catalog_order_independent(self):
+        c1: dict[str, ToolManifest] = {
+            "svc.alpha": {
+                "name": "svc.alpha",
+                "description": "Alpha tool. Helps with listing. Do not use for deletion.",
+                "input_schema": {"type": "object"},
+                "aliases": ["ls"],
+                "defer_loading": False,
+            },
+            "svc.beta": {
+                "name": "svc.beta",
+                "description": "Beta tool. Also helps with listing. Do not use for deletion.",
+                "input_schema": {"type": "object"},
+                "aliases": ["ls"],
+                "defer_loading": True,
+            },
+        }
+        c2: dict[str, ToolManifest] = {k: c1[k] for k in reversed(list(c1.keys()))}
+        self.assertEqual(build_rewrite_map(c1), build_rewrite_map(c2))
+
     def test_baseline_preservation(self):
         query = "read_file"
         results = search_tools(self.catalog, query)
