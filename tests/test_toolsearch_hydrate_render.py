@@ -3,7 +3,9 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
+from pirml.contracts.schemas import ToolManifest
 from pirml.toolsearch.loader import HydrationError, hydrate_tools, load_selected
 from pirml.toolsearch.render import RenderError, enforce_client_search_mode, render_selected_tools
 
@@ -14,20 +16,26 @@ class TestHydrateRender(unittest.TestCase):
         self.tools_dir = Path(self.tmpdir) / "tools"
         self.tools_dir.mkdir()
 
-        self.tool1 = {
-            "name": "svc.tool1",
-            "description": "Tool 1 description. Sentence two. Sentence three with when NOT to use.",
-            "input_schema": {"type": "object", "properties": {"arg": {"type": "integer"}}},
-            "input_examples": [{"arg": 1}],
-            "defer_loading": False,
-            "tags": ["tag1"],
-        }
-        self.tool2 = {
-            "name": "svc.tool2",
-            "description": "Tool 2 description. Sentence two. Sentence three with avoid token.",
-            "input_schema": {"type": "object"},
-            "defer_loading": True,
-        }
+        self.tool1 = cast(
+            ToolManifest,
+            {
+                "name": "svc.tool1",
+                "description": "Tool 1 description. Sentence two. Sentence three with when NOT to use.",
+                "input_schema": {"type": "object", "properties": {"arg": {"type": "integer"}}},
+                "input_examples": [{"arg": 1}],
+                "defer_loading": False,
+                "tags": ["tag1"],
+            },
+        )
+        self.tool2 = cast(
+            ToolManifest,
+            {
+                "name": "svc.tool2",
+                "description": "Tool 2 description. Sentence two. Sentence three with avoid token.",
+                "input_schema": {"type": "object"},
+                "defer_loading": True,
+            },
+        )
 
         with open(self.tools_dir / "svc.tool1.json", "w") as f:
             json.dump(self.tool1, f)

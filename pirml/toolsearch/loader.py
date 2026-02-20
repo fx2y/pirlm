@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 from pirml.contracts.schemas import ToolManifest
@@ -37,7 +38,7 @@ class HydrationError(Exception):
         super().__init__(f"{type}: {msg}")
 
 
-def hydrate_tools(names: list[str], catalog: dict[str, ToolManifest]) -> list[ToolManifest]:
+def hydrate_tools(names: list[str], catalog: Mapping[str, ToolManifest]) -> list[ToolManifest]:
     """C3.T1: Strict name->manifest expansion preserving input order."""
     hydrated: list[ToolManifest] = []
     for name in names:
@@ -71,7 +72,7 @@ def load_selected(names: list[str], tools_dir: str | Path) -> list[ToolManifest]
     return tools
 
 
-def catalog_hash(catalog: dict[str, ToolManifest]) -> str:
+def catalog_hash(catalog: Mapping[str, ToolManifest]) -> str:
     """C1.T2: Deterministic catalog hash."""
     # canonical_json sorts keys recursively
     return hashlib.sha256(canonical_json(catalog).encode("utf-8")).hexdigest()

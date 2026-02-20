@@ -17,9 +17,9 @@ def render_selected_tools(tools: list[ToolManifest]) -> list[dict[str, Any]]:
     rendered: list[dict[str, Any]] = []
     for tool in tools:
         row: dict[str, Any] = {
-            "name": tool["name"],
-            "description": tool["description"],
-            "input_schema": tool["input_schema"],
+            "name": tool.get("name", ""),
+            "description": tool.get("description", ""),
+            "input_schema": tool.get("input_schema", {}),
         }
         # input_examples is optional in ToolManifest schema
         if "input_examples" in tool:
