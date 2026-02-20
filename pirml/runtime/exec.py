@@ -23,7 +23,7 @@ from .rpc import (
     enforce_line_limit,
     normalize_frames,
     read_frame,
-    validate_trace,
+    validate_strict_trace,
     write_frame,
 )
 from .tools import ToolRegistry, stable_env
@@ -382,7 +382,7 @@ def _result_payload_from_trace(frame: Any) -> JSONObject:
 
 
 def _build_replay_plan(replay_frames: list[JSONObject], max_line_bytes: int) -> _ReplayPlan:
-    validate_trace(replay_frames, max_line_bytes=max_line_bytes)
+    validate_strict_trace(replay_frames, max_line_bytes=max_line_bytes)
     call_ids: list[str] = []
     cassette: dict[str, JSONObject] = {}
     source_final_result: Mapping[str, Any] | None = None

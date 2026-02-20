@@ -3,7 +3,7 @@
     {
       "code": "invalid_io_schema",
       "line": null,
-      "msg": "final_schema missing",
+      "msg": "Missing io_schema keys: ['citations_schema', 'final_schema']",
       "symbol": null
     }
   ],

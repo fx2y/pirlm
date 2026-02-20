@@ -1,13 +1,13 @@
 {
   "errors": [
     {
-      "code": "FAIL_B3_STDOUT_CHATTER",
-      "line": null,
-      "msg": "Non-JSON chatter in smoke stdout",
-      "symbol": null
+      "code": "banned_call",
+      "line": 5,
+      "msg": "[repair_declined] Call to print is banned",
+      "symbol": "print"
     }
   ],
   "ok": false,
-  "stage": "smoke",
+  "stage": "verify",
   "warnings": []
 }

@@ -27,6 +27,8 @@ class TestCompilePrompt(unittest.TestCase):
         self.assertIn("max_calls=5", prompt)
         self.assertIn("<<<PROG>>>", prompt)
         self.assertIn("<<<CONTRACT>>>", prompt)
+        self.assertIn("from pirml.runtime.rpc import send_final", prompt)
+        self.assertNotIn("await send_final", prompt)
 
     def test_prompt_deterministic(self):
         task = "task"

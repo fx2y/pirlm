@@ -87,6 +87,8 @@ class ReplayTests(unittest.TestCase):
                 for frame in frames
                 if not (frame.get("op") == "result" and frame["id"] == "c00001")
             ]
+            for idx, frame in enumerate(pruned, start=1):
+                frame["seq"] = idx
             bad_trace.write_text(
                 "".join(
                     json.dumps(frame, sort_keys=True, separators=(",", ":")) + "\n"
@@ -168,6 +170,24 @@ class ReplayTests(unittest.TestCase):
             completed = run_cli(program="tests/prog_ok.py", out_dir=base / "out", replay=bad_trace)
             self.assertEqual(completed.returncode, 2)
             self.assertIn("duplicate result id", completed.stderr)
+
+    def test_replay_rejects_trace_missing_envelope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            bad_trace = base / "bad-trace.ndjson"
+            bad_lines: list[dict[str, object]] = [
+                {"op": "call", "id": "c00001", "tool": "echo", "args": {"text": "a"}, "ts": 1},
+                {"op": "result", "id": "c00001", "ok": True, "output": "a", "ts": 2},
+                {"op": "final", "ok": True, "result": {"ok": True, "results": []}, "ts": 3},
+            ]
+            bad_trace.write_text(
+                "\n".join(json.dumps(line, sort_keys=True) for line in bad_lines) + "\n",
+                encoding="utf-8",
+            )
+
+            completed = run_cli(program="tests/prog_ok.py", out_dir=base / "out", replay=bad_trace)
+            self.assertEqual(completed.returncode, 2)
+            self.assertIn("seq must be int", completed.stderr)
 
     def test_final_and_trace_are_byte_stable_across_three_runs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

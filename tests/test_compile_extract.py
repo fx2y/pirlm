@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import json
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
+from pirml.compiler.compile import compile_task
 from pirml.compiler.extract import ExtractionError, extract_blocks
 
 
@@ -45,6 +50,26 @@ async def main():
         raw = "<<<CONTRACT>>>\n{}\n<<<PROG>>>\ncode"
         with self.assertRaisesRegex(ExtractionError, "invalid_order"):
             extract_blocks(raw)
+
+    def test_extract_failure_uses_compile_error_file_shape(self):
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = Path(out_dir)
+            with patch(
+                "pirml.compiler.model.StubModelAdapter.compile_once", return_value="invalid"
+            ):
+                result = compile_task(
+                    task="echo hello",
+                    tools_dir=Path("tests/fixtures/toolsearch/catalog"),
+                    out_dir=out_path,
+                    skip_smoke=True,
+                )
+            self.assertFalse(result.get("ok"))
+            payload = json.loads((out_path / "compile_error.json").read_text(encoding="utf-8"))
+            self.assertIn("stage", payload)
+            self.assertEqual(payload.get("stage"), "extract")
+            self.assertIn("errors", payload)
+            self.assertIsInstance(payload["errors"], list)
+            self.assertTrue(payload["errors"])
 
 
 if __name__ == "__main__":

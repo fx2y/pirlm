@@ -21,7 +21,7 @@ def build_compile_prompt(
         "You output ONLY 2 blocks with sentinels: <<<PROG>>> python then <<<CONTRACT>>> json.\n"
         "No markdown. No commentary. Code must run on py3.12 stdlib only.\n"
         "All tool calls are async + awaited. Use asyncio.gather for independent calls.\n"
-        "Print exactly one final JSON object matching final_schema."
+        "Emit exactly one final JSON result via: from pirml.runtime.rpc import send_final; send_final(ok=True, result=...)."
     )
 
     # T4 PROMPT_TOOLSET

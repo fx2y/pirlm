@@ -20,7 +20,6 @@ def main() -> int:
     parser.add_argument(
         "--out-dir", required=True, type=Path, help="Output directory for artifacts"
     )
-    parser.add_argument("--model", help="Model name (optional for now)")
     parser.add_argument("--smoke", action="store_true", help="Run smoke test (Cycle C3+)")
 
     args = parser.parse_args()
@@ -32,7 +31,7 @@ def main() -> int:
         out_dir=args.out_dir,
         query=args.query,
         k=args.top_k,
-        model=args.model,
+        skip_smoke=not args.smoke,
     )
 
     # 2. Handle exit codes
@@ -40,25 +39,36 @@ def main() -> int:
         # Print summary as per C1.T7 AC
         print(f"Compilation successful: {args.out_dir}", file=sys.stderr)
         return 0
-    else:
-        # Business failure
-        err_obj = out.get("error", {})
-        # err_obj can be CompileErr or CompileErrorFile
-        err_msg = "Unknown error"
-        if err_obj:
-            # ErrorObject has 'msg', CompileErrorFile might have 'errors'
-            if "msg" in err_obj:
-                err_msg = str(err_obj.get("msg"))
-            elif "errors" in err_obj:
-                # Need to cast or use get safely
-                errors_list = cast(dict[str, Any], err_obj).get("errors", [])
-                err_msg = f"Verification failed with {len(errors_list)} errors"
 
-        print(
-            f"Compilation failed: {err_msg}",
-            file=sys.stderr,
-        )
-        return 1
+    # Business or Integrity failure
+    err_obj = out.get("error", {})
+    err_type = "unknown"
+    err_msg = "Unknown error"
+
+    if "errors" in err_obj:
+        # CompileErrorFile (Unified shape)
+        errors_list = cast(list[dict[str, Any]], err_obj.get("errors", []))
+        stage = err_obj.get("stage", "unknown")
+
+        err_type = "internal_error" if stage == "internal" else f"{stage}_fail"
+
+        if errors_list:
+            # Prefer the first error's code/msg if available
+            first_err = errors_list[0]
+            err_msg = cast(str, first_err.get("msg", "Unknown error"))
+            if stage != "internal":
+                err_type = cast(str, first_err.get("code", f"{stage}_fail"))
+
+    print(
+        f"Compilation failed [{err_type}]: {err_msg}",
+        file=sys.stderr,
+    )
+
+    # RC2 for integrity/internal faults
+    if err_type == "internal_error":
+        return 2
+
+    return 1
 
 
 if __name__ == "__main__":

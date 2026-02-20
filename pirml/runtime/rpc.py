@@ -338,3 +338,47 @@ def validate_trace(
 
     if validator.final_count != 1:
         raise ProtocolError(f"expected exactly one final, got {validator.final_count}")
+
+
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def validate_strict_trace(
+    frames: Sequence[Mapping[str, Any]], max_line_bytes: int = MAX_LINE_BYTES_DEFAULT
+) -> None:
+    """R7: Enforce full trace contract including envelope (seq/dir/ms/sha)."""
+    validate_trace(frames, max_line_bytes=max_line_bytes)
+
+    expected_seq = 1
+    for idx, frame in enumerate(frames, start=1):
+        # 1. seq
+        seq = frame.get("seq")
+        if not isinstance(seq, int):
+            raise ProtocolError(f"line {idx}: seq must be int")
+        if seq != expected_seq:
+            raise ProtocolError(f"line {idx}: seq must be {expected_seq}, got {seq}")
+        expected_seq += 1
+
+        # 2. dir
+        direction = frame.get("dir")
+        if direction not in {"in", "out"}:
+            raise ProtocolError(f"line {idx}: dir must be 'in' or 'out'")
+
+        # 3. ms / ts
+        ms = frame.get("ms")
+        ts = frame.get("ts")
+        if not isinstance(ms, int) or ms < 0:
+            raise ProtocolError(f"line {idx}: ms must be non-negative int")
+        if not isinstance(ts, int):
+            raise ProtocolError(f"line {idx}: ts must be int")
+
+        # 4. hashes
+        op = frame.get("op")
+        if op == "call":
+            h = frame.get("sha256_args")
+            if not isinstance(h, str) or _SHA256_RE.fullmatch(h) is None:
+                raise ProtocolError(f"line {idx}: sha256_args must be lowercase sha256 hex")
+        elif op in {"result", "final"}:
+            h = frame.get("sha256_output")
+            if not isinstance(h, str) or _SHA256_RE.fullmatch(h) is None:
+                raise ProtocolError(f"line {idx}: sha256_output must be lowercase sha256 hex")

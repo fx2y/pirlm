@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -55,18 +56,26 @@ class TestCompileGolden(unittest.TestCase):
                                 except Exception:
                                     pass
 
-                            if not golden_path.exists():
-                                golden_path.write_text(actual_content)
-                                # We don't fail, just notify (or skip if first run)
-                                print(f"Generated golden: {golden_path}")
-                                continue
-
-                            expected_content = golden_path.read_text()
-                            self.assertEqual(
-                                actual_content,
-                                expected_content,
-                                f"Golden mismatch for {case.id}/{art}. Run with --update-golden if expected.",
-                            )
+                            if golden_path.exists():
+                                expected_content = golden_path.read_text()
+                                if actual_content != expected_content:
+                                    if os.getenv("PIRML_UPDATE_GOLDEN") == "1":
+                                        golden_path.write_text(actual_content)
+                                        print(f"Updated golden: {golden_path}")
+                                        continue
+                                    self.assertEqual(
+                                        actual_content,
+                                        expected_content,
+                                        f"Golden mismatch for {case.id}/{art}. Run with PIRML_UPDATE_GOLDEN=1 if expected.",
+                                    )
+                            else:
+                                if os.getenv("PIRML_UPDATE_GOLDEN") == "1":
+                                    golden_path.write_text(actual_content)
+                                    print(f"Generated golden: {golden_path}")
+                                    continue
+                                self.fail(
+                                    f"Golden missing for {case.id}/{art}. Set PIRML_UPDATE_GOLDEN=1 to generate."
+                                )
                         else:
                             # If artifact doesn't exist but golden does, that's a fail
                             if golden_path.exists():

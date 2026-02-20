@@ -12,7 +12,6 @@ from pirml.compiler.repair import is_trivial_repair, repair_once
 from pirml.compiler.smoke import run_smoke_subprocess
 from pirml.compiler.types import (
     CompileArtifacts,
-    CompileErr,
     CompileErrorFile,
     CompileOutput,
     ContractBudget,
@@ -72,7 +71,6 @@ def compile_task(
     query: str | None = None,
     k: int = 5,
     budgets: ContractBudget | None = None,
-    model: str | None = None,
     skip_smoke: bool = False,
 ) -> CompileOutput:
     """C1.T7: Orchestrate compile pipeline.
@@ -142,8 +140,8 @@ def compile_task(
         # 6. Smoke Test (Cycle C3)
         if not skip_smoke:
             smoke_res = run_smoke_subprocess(prog_src, contract)
-            if smoke_res.stdout:
-                (out_dir / "smoke_trace.ndjson").write_text(smoke_res.stdout, encoding="utf-8")
+            # Always emit smoke trace artifact as per P1.05
+            (out_dir / "smoke_trace.ndjson").write_text(smoke_res.stdout, encoding="utf-8")
 
             if not smoke_res.ok:
                 smoke_err = smoke_res.error or {
@@ -178,10 +176,20 @@ def compile_task(
         return {"ok": True, "artifacts": artifacts}
 
     except ExtractionError as e:
-        err: CompileErr = {"type": e.type, "msg": e.msg, "retryable": False}
-        write_compile_error(out_dir / "compile_error.json", err)
-        return {"ok": False, "error": err}
+        err_file_ext: CompileErrorFile = {
+            "ok": False,
+            "errors": [{"code": e.type, "msg": e.msg, "line": None, "symbol": None}],
+            "warnings": [],
+            "stage": "extract",
+        }
+        write_compile_error(out_dir / "compile_error.json", err_file_ext)
+        return {"ok": False, "error": err_file_ext}
     except Exception as e:
-        err_int: CompileErr = {"type": "internal_error", "msg": str(e), "retryable": False}
-        write_compile_error(out_dir / "compile_error.json", err_int)
-        return {"ok": False, "error": err_int}
+        err_file_int: CompileErrorFile = {
+            "ok": False,
+            "errors": [{"code": "internal_error", "msg": str(e), "line": None, "symbol": None}],
+            "warnings": [],
+            "stage": "internal",
+        }
+        write_compile_error(out_dir / "compile_error.json", err_file_int)
+        return {"ok": False, "error": err_file_int}

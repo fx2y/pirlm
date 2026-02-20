@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -130,6 +131,26 @@ class TestToolSearchLint(unittest.TestCase):
             with self.assertRaises(HydrationError) as cm:
                 load_catalog(d, strict=True)
             self.assertEqual(cm.exception.type, "load_failed")
+
+    def test_schema_and_lint_name_rule_match(self) -> None:
+        schema = json.loads(Path("pirml/contracts/tool_manifest.schema.json").read_text())
+        pattern = schema["properties"]["name"]["pattern"]
+
+        self.assertIsNotNone(re.match(pattern, "svc.tool"))
+        self.assertIsNone(re.match(pattern, "tool"))
+
+        good: dict[str, Any] = {
+            "name": "svc.tool",
+            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+            "input_schema": {},
+        }
+        bad: dict[str, Any] = {
+            "name": "tool",
+            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
+            "input_schema": {},
+        }
+        self.assertFalse(any(e["code"] == "M1" for e in lint_manifest(good)))
+        self.assertTrue(any(e["code"] == "M1" for e in lint_manifest(bad)))
 
 
 if __name__ == "__main__":

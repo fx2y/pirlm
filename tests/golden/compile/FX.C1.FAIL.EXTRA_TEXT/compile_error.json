@@ -1,5 +1,13 @@
 {
-  "msg": "Leading prose detected",
-  "retryable": false,
-  "type": "extra_prose"
+  "errors": [
+    {
+      "code": "extra_prose",
+      "line": null,
+      "msg": "Leading prose detected",
+      "symbol": null
+    }
+  ],
+  "ok": false,
+  "stage": "extract",
+  "warnings": []
 }

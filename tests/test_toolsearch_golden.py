@@ -25,8 +25,13 @@ class TestToolSearchGolden(unittest.TestCase):
         actual_json = json.dumps(results, indent=2, sort_keys=True)
 
         if not golden_path.exists():
-            golden_path.write_text(actual_json)
-            self.skipTest(f"Generated golden file: {golden_path}")
+            import os
+
+            if os.getenv("PIRML_UPDATE_GOLDEN") == "1":
+                golden_path.write_text(actual_json)
+                print(f"Generated golden file: {golden_path}")
+            else:
+                self.fail(f"Golden missing: {golden_path}. Set PIRML_UPDATE_GOLDEN=1 to generate.")
 
         expected_json = golden_path.read_text()
         self.assertEqual(
@@ -44,8 +49,13 @@ class TestToolSearchGolden(unittest.TestCase):
         actual_json = json.dumps(rendered, indent=2, sort_keys=True)
 
         if not golden_path.exists():
-            golden_path.write_text(actual_json)
-            self.skipTest(f"Generated golden file: {golden_path}")
+            import os
+
+            if os.getenv("PIRML_UPDATE_GOLDEN") == "1":
+                golden_path.write_text(actual_json)
+                print(f"Generated golden file: {golden_path}")
+            else:
+                self.fail(f"Golden missing: {golden_path}. Set PIRML_UPDATE_GOLDEN=1 to generate.")
 
         expected_json = golden_path.read_text()
         self.assertEqual(

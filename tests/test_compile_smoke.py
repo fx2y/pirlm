@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -48,7 +49,15 @@ class TestCompileSmokeManifest(unittest.TestCase):
             prog_src, contract_src = extract_blocks(case.raw_model_text)
             # Verify first just in case
             contract, errors = verify_compile_output(prog_src, contract_src, list(case.tools_topk))
-            self.assertFalse(errors, f"Case {case.id} failed verification: {errors}")
+            if errors:
+                # B2 now rejects print-based chatter before smoke.
+                if case.id in {"FX.C3.FAIL.STDOUT_CHATTER", "FX.C3.FAIL.MULTI_FINAL"}:
+                    self.assertTrue(
+                        any(err.get("code") == "banned_call" for err in errors),
+                        f"Case {case.id} expected banned_call verify failure",
+                    )
+                    continue
+                self.fail(f"Case {case.id} failed verification: {errors}")
             self.assertIsNotNone(contract)
 
             if contract is None:
@@ -95,7 +104,7 @@ class TestCompileSmokeManifest(unittest.TestCase):
                 self.assertFalse((out_path / "compile_error.json").exists())
 
         # Test smoke failure integration
-        fail_case = next(c for c in cases if c.id == "FX.C3.FAIL.STDOUT_CHATTER")
+        fail_case = next(c for c in cases if c.id == "FX.C3.FAIL.CALL_BUDGET")
         with tempfile.TemporaryDirectory() as out_dir:
             out_path = Path(out_dir)
             with patch(
@@ -113,8 +122,67 @@ class TestCompileSmokeManifest(unittest.TestCase):
                     ef = cast(dict[str, Any], err_file)
                     self.assertEqual(ef.get("stage"), "smoke")
                     errors = ef.get("errors", [])
-                    self.assertEqual(errors[0].get("code"), "FAIL_B3_STDOUT_CHATTER")
+                    self.assertEqual(errors[0].get("code"), "FAIL_B3_CALL_BUDGET_OVERFLOW")
                 self.assertTrue((out_path / "compile_error.json").exists())
+
+    def test_smoke_trace_deterministic_x3(self) -> None:
+        case = next(
+            c
+            for c in load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
+            if c.id == "FX.C1.PASS.MINIMAL"
+        )
+        prog_src, contract_src = extract_blocks(case.raw_model_text)
+        contract, errors = verify_compile_output(prog_src, contract_src, list(case.tools_topk))
+        self.assertFalse(errors)
+        self.assertIsNotNone(contract)
+        if contract is None:
+            return
+
+        runs = [run_smoke_subprocess(prog_src, contract).stdout for _ in range(3)]
+        self.assertEqual(runs[0], runs[1])
+        self.assertEqual(runs[1], runs[2])
+
+    def test_smoke_fail_trace_uses_closed_algebra(self) -> None:
+        case = next(
+            c
+            for c in load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
+            if c.id == "FX.C3.FAIL.CALL_BUDGET"
+        )
+        prog_src, contract_src = extract_blocks(case.raw_model_text)
+        contract, errors = verify_compile_output(prog_src, contract_src, list(case.tools_topk))
+        self.assertFalse(errors)
+        self.assertIsNotNone(contract)
+        if contract is None:
+            return
+
+        res = run_smoke_subprocess(prog_src, contract)
+        self.assertFalse(res.ok)
+        lines = [line for line in res.stdout.splitlines() if line.strip()]
+        self.assertTrue(lines)
+        for line in lines:
+            frame = cast(dict[str, Any], json.loads(line))
+            self.assertIn(frame.get("op"), {"call", "result", "final"})
+
+    def test_smoke_trace_emitted_on_timeout(self) -> None:
+        case = next(
+            c
+            for c in load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
+            if c.id == "FX.C3.FAIL.TIMEOUT"
+        )
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = Path(out_dir)
+            with patch(
+                "pirml.compiler.model.StubModelAdapter.compile_once",
+                return_value=case.raw_model_text,
+            ):
+                res = compile_task(
+                    task=case.task,
+                    tools_dir=Path("tests/fixtures/toolsearch/catalog"),
+                    out_dir=out_path,
+                    skip_smoke=False,
+                )
+            self.assertFalse(res.get("ok"))
+            self.assertTrue((out_path / "smoke_trace.ndjson").exists())
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@ if __name__=="__main__":
 python -m scripts.compile --task 'smoke' --tools-dir tests/fixtures/toolsearch/catalog --out-dir out/compile-smoke
 export PIRML_MODEL_RAW='invalid'
 python -m scripts.compile --task 'smoke' --tools-dir tests/fixtures/toolsearch/catalog --out-dir out/compile-fail || true
-python -m scripts.schema_lint
+python -m scripts.schema_lint --final out/ci/final.json --contract out/compile-smoke/contract.json --compile-error out/compile-fail/compile_error.json
 python -m scripts.tool_manifest_lint
 """
 

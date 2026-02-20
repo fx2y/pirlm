@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -174,11 +175,34 @@ def validate_compile_error(ce: Any, path: str) -> list[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="PIRML Schema Linter")
+
+    parser.add_argument("--final", type=Path, help="Path to final.json artifact")
+    parser.add_argument(
+        "--contract", action="append", type=Path, help="Path(s) to contract.json artifacts"
+    )
+    parser.add_argument(
+        "--compile-error",
+        action="append",
+        type=Path,
+        help="Path(s) to compile_error.json artifacts",
+    )
+
+    args = parser.parse_args()
+    if not any((args.final, args.contract, args.compile_error)):
+        print(
+            "Error: pass at least one artifact path (--final/--contract/--compile-error)",
+            file=sys.stderr,
+        )
+        return 1
     exit_code = 0
 
-    # 1. Validate final.json
-    final_path = Path("out/ci/final.json")
-    if final_path.exists():
+    # 1. Validate final.json (Required if passed)
+    if args.final:
+        final_path = args.final
+        if not final_path.exists():
+            print(f"Error: Required final artifact missing: {final_path}", file=sys.stderr)
+            return 1
         try:
             final = json.loads(final_path.read_text())
             errors: list[str] = []
@@ -210,44 +234,48 @@ def main() -> int:
             print(f"Error reading {final_path}: {exc}", file=sys.stderr)
             exit_code = 1
 
-    # 2. Validate all contract.json in out/
-    for contract_path in Path("out").rglob("contract.json"):
-        try:
-            contract = json.loads(contract_path.read_text())
-            errors = validate_contract(contract, str(contract_path))
-            if errors:
-                print(f"Schema validation failed for {contract_path}:", file=sys.stderr)
-                for err in errors:
-                    print(f"  - {err}", file=sys.stderr)
+    # 2. Validate contract.json artifacts
+    if args.contract:
+        for contract_path in args.contract:
+            if not contract_path.exists():
+                print(
+                    f"Error: Required contract artifact missing: {contract_path}", file=sys.stderr
+                )
+                return 1
+            try:
+                contract = json.loads(contract_path.read_text())
+                errors = validate_contract(contract, str(contract_path))
+                if errors:
+                    print(f"Schema validation failed for {contract_path}:", file=sys.stderr)
+                    for err in errors:
+                        print(f"  - {err}", file=sys.stderr)
+                    exit_code = 1
+                else:
+                    print(f"Verified {contract_path}")
+            except Exception as exc:
+                print(f"Error reading {contract_path}: {exc}", file=sys.stderr)
                 exit_code = 1
-            else:
-                print(f"Verified {contract_path}")
-        except Exception as exc:
-            print(f"Error reading {contract_path}: {exc}", file=sys.stderr)
-            exit_code = 1
 
-    # 3. Validate all compile_error.json in out/
-    for ce_path in Path("out").rglob("compile_error.json"):
-        try:
-            ce = json.loads(ce_path.read_text())
-            # compile_error can be either ErrorObject (CompileErr) or CompileErrorFile
-            # We check if it has 'stage' to identify CompileErrorFile
-            errors: list[str] = []
-            if "stage" in ce:
+    # 3. Validate compile_error.json artifacts
+    if args.compile_error:
+        for ce_path in args.compile_error:
+            if not ce_path.exists():
+                print(f"Error: Required compile_error artifact missing: {ce_path}", file=sys.stderr)
+                return 1
+            try:
+                ce = json.loads(ce_path.read_text())
                 errors = validate_compile_error(ce, str(ce_path))
-            else:
-                errors = validate_error(ce, str(ce_path))
 
-            if errors:
-                print(f"Schema validation failed for {ce_path}:", file=sys.stderr)
-                for err in errors:
-                    print(f"  - {err}", file=sys.stderr)
+                if errors:
+                    print(f"Schema validation failed for {ce_path}:", file=sys.stderr)
+                    for err in errors:
+                        print(f"  - {err}", file=sys.stderr)
+                    exit_code = 1
+                else:
+                    print(f"Verified {ce_path}")
+            except Exception as exc:
+                print(f"Error reading {ce_path}: {exc}", file=sys.stderr)
                 exit_code = 1
-            else:
-                print(f"Verified {ce_path}")
-        except Exception as exc:
-            print(f"Error reading {ce_path}: {exc}", file=sys.stderr)
-            exit_code = 1
 
     return exit_code
 

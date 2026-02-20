@@ -47,7 +47,6 @@ async def TOOL_{tool}(args):
 import asyncio
 import json
 import sys
-import time
 import os
 
 # Internal state for tracking
@@ -56,12 +55,18 @@ _parallel_max = 0
 _parallel_current = 0
 _bytes_in = 0
 _bytes_out = 0
+_clock = 0
 
 BUDGETS = {json.dumps(budgets)}
 
+def _get_ts():
+    global _clock
+    _clock += 100
+    return _clock
+
 def send_final(ok, result):
     # S.SM3: Single final JSON object, no chatter
-    print(json.dumps({{"op": "final", "ok": ok, "result": result, "ts": int(time.time()*1000)}}))
+    print(json.dumps({{"op": "final", "ok": ok, "result": result, "ts": _get_ts()}}))
     sys.exit(0)
 
 async def _harness_call_tool(name, args):
@@ -70,25 +75,22 @@ async def _harness_call_tool(name, args):
     call_id = f"c{{_calls + 1:05d}}"
     
     # Emit call frame (S.RPC4 parity)
-    print(json.dumps({{"op": "call", "id": call_id, "tool": name, "args": args, "ts": int(time.time()*1000)}}))
+    print(json.dumps({{"op": "call", "id": call_id, "tool": name, "args": args, "ts": _get_ts()}}))
 
     # Track bytes in
     arg_bytes = len(json.dumps(args).encode("utf-8"))
     _bytes_in += arg_bytes
     if _bytes_in > BUDGETS.get("max_bytes_in", 0):
-        print(json.dumps({{"op": "error", "type": "FAIL_B3_BYTES_BUDGET_OVERFLOW", "msg": "max_bytes_in exceeded"}}))
-        sys.exit(1)
+        send_final(False, {{"error": {{"type": "FAIL_B3_BYTES_BUDGET_OVERFLOW", "msg": "max_bytes_in exceeded"}}}})
 
     _calls += 1
     if _calls > BUDGETS.get("max_calls", 0):
-        print(json.dumps({{"op": "error", "type": "FAIL_B3_CALL_BUDGET_OVERFLOW", "msg": "max_calls exceeded"}}))
-        sys.exit(1)
+        send_final(False, {{"error": {{"type": "FAIL_B3_CALL_BUDGET_OVERFLOW", "msg": "max_calls exceeded"}}}})
 
     _parallel_current += 1
     _parallel_max = max(_parallel_max, _parallel_current)
     if _parallel_max > BUDGETS.get("max_parallel", 0):
-        print(json.dumps({{"op": "error", "type": "FAIL_B3_PARALLEL_BUDGET_OVERFLOW", "msg": "max_parallel exceeded"}}))
-        sys.exit(1)
+        send_final(False, {{"error": {{"type": "FAIL_B3_PARALLEL_BUDGET_OVERFLOW", "msg": "max_parallel exceeded"}}}})
 
     try:
         await asyncio.sleep(0.1)  # Simulate async work for parallel tracking
@@ -107,11 +109,10 @@ async def _harness_call_tool(name, args):
         res_bytes = len(json.dumps(res).encode("utf-8"))
         _bytes_out += res_bytes
         if _bytes_out > BUDGETS.get("max_bytes_out", 0):
-            print(json.dumps({{"op": "error", "type": "FAIL_B3_BYTES_BUDGET_OVERFLOW", "msg": "max_bytes_out exceeded"}}))
-            sys.exit(1)
+            send_final(False, {{"error": {{"type": "FAIL_B3_BYTES_BUDGET_OVERFLOW", "msg": "max_bytes_out exceeded"}}}})
         
         # Emit result frame
-        print(json.dumps({{"op": "result", "id": call_id, "ok": True, "output": res, "ts": int(time.time()*1000)}}))
+        print(json.dumps({{"op": "result", "id": call_id, "ok": True, "output": res, "ts": _get_ts()}}))
             
         return res
     finally:
@@ -192,11 +193,14 @@ def run_smoke_subprocess(
             seq = 0
             start_ts: int | None = None
 
+            last_parsed_data: dict[str, Any] | None = None
             for line in lines:
                 try:
                     data = cast(dict[str, Any], json.loads(line))
-                    op = data.get("op")
-                    if op not in ("call", "result", "final", "error"):
+                    if "op" not in data:
+                        continue
+                    op = data["op"]
+                    if op not in ("call", "result", "final"):
                         return SmokeResult(
                             ok=False,
                             error={
@@ -204,16 +208,6 @@ def run_smoke_subprocess(
                                 "msg": f"Unexpected op: {op}",
                                 "retryable": False,
                             },
-                            stdout=stdout,
-                            stderr=stderr,
-                        )
-
-                    if op == "error":
-                        err_type = cast(str, data.get("type", "smoke_error"))
-                        err_msg = cast(str, data.get("msg", "Unknown smoke error"))
-                        return SmokeResult(
-                            ok=False,
-                            error={"type": err_type, "msg": err_msg, "retryable": False},
                             stdout=stdout,
                             stderr=stderr,
                         )
@@ -252,6 +246,7 @@ def run_smoke_subprocess(
                             )
 
                     processed_lines.append(canonical_json(data))
+                    last_parsed_data = data
 
                 except json.JSONDecodeError:
                     return SmokeResult(
@@ -265,7 +260,7 @@ def run_smoke_subprocess(
                         stderr=stderr,
                     )
 
-            if final_found == 0:
+            if final_found == 0 or last_parsed_data is None:
                 return SmokeResult(
                     ok=False,
                     error={
@@ -280,11 +275,47 @@ def run_smoke_subprocess(
             # Reconstruct stdout with processed lines
             new_stdout = "\n".join(processed_lines) + "\n"
 
-            last_data = cast(dict[str, Any], json.loads(processed_lines[-1]))
-            if last_data.get("op") == "final":
+            if last_parsed_data["op"] == "final":
+                is_ok = False
+                if "ok" in last_parsed_data:
+                    is_ok = bool(last_parsed_data["ok"])
+
+                res: dict[str, Any] = {}
+                if "result" in last_parsed_data:
+                    res_val = last_parsed_data["result"]
+                    if isinstance(res_val, dict):
+                        res = cast(dict[str, Any], res_val)
+
+                err: CompileErr | None = None
+                if not is_ok:
+                    # Try to extract error from result object
+                    if "error" in res:
+                        err_val = res["error"]
+                        if isinstance(err_val, dict):
+                            err_obj = cast(dict[str, Any], err_val)
+                            err_type = "smoke_failed"
+                            if "type" in err_obj:
+                                err_type = str(err_obj["type"])
+                            err_msg = "Smoke test failed"
+                            if "msg" in err_obj:
+                                err_msg = str(err_obj["msg"])
+
+                            err = {
+                                "type": err_type,
+                                "msg": err_msg,
+                                "retryable": False,
+                            }
+                    if err is None:
+                        err = {
+                            "type": "smoke_failed",
+                            "msg": "Smoke test failed",
+                            "retryable": False,
+                        }
+
                 return SmokeResult(
-                    ok=True,
-                    final=cast(dict[str, Any], last_data.get("result")),
+                    ok=is_ok,
+                    final=res,
+                    error=err,
                     stdout=new_stdout,
                     stderr=stderr,
                 )

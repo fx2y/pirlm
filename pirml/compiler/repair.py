@@ -39,37 +39,13 @@ def repair_once(
                 io_repaired = False
 
                 if "final_schema" in data and "io_schema" not in data:
-                    data["io_schema"] = {
-                        "trace_ptr": "trace.ndjson",
-                        "final_schema": data.pop("final_schema"),
-                        "citations_schema": {},
-                    }
+                    # Pure alias migration
+                    data["io_schema"] = {"final_schema": data.pop("final_schema")}
                     io_repaired = True
 
-                if "io_schema" in data:
-                    io = data["io_schema"]
-                    if "trace_ptr" not in io:
-                        io["trace_ptr"] = "trace.ndjson"
-                        io_repaired = True
-                    if "citations_schema" not in io:
-                        io["citations_schema"] = {}
-                        io_repaired = True
-
-                # Add other missing root keys with defaults if safe
+                # Do NOT synthesize budgets, assertions, or tool_deps if missing.
+                # These must be emitted by the model as per contract.
                 root_repaired = False
-                for k in ["budgets", "assertions", "tool_deps"]:
-                    if k not in data:
-                        if k == "budgets":
-                            data[k] = {
-                                "max_calls": 40,
-                                "max_parallel": 10,
-                                "max_bytes_in": 5000000,
-                                "max_bytes_out": 200000,
-                                "timeout_s": 60,
-                            }
-                        elif k in ("assertions", "tool_deps"):
-                            data[k] = []
-                        root_repaired = True
 
                 if io_repaired or root_repaired:
                     from pirml.runtime.rpc import canonical_json

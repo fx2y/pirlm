@@ -1,13 +1,13 @@
 {
   "errors": [
     {
-      "code": "FAIL_B3_MULTI_FINAL",
-      "line": null,
-      "msg": "Multiple final frames in smoke stdout",
-      "symbol": null
+      "code": "banned_call",
+      "line": 4,
+      "msg": "[repair_declined] Call to print is banned",
+      "symbol": "print"
     }
   ],
   "ok": false,
-  "stage": "smoke",
+  "stage": "verify",
   "warnings": []
 }
