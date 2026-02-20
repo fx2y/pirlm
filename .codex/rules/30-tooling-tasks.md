@@ -9,18 +9,14 @@ paths:
 ---
 # Tooling + Task Rules
 
-- `G0` `mise` is the only task contract. CI entrypoint is `mise run ci` only.
-- `G1` Gate order is fixed and fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
-- `G2` `fast` is inner-loop (<3s class); keep it tiny and representative. Heavy checks belong in `ci`.
-- `G3` Scripts execute as modules (`python -m scripts.*`), never path-hacked direct imports.
-- `G4` Tool backend pins are policy, not convenience:
-  - pyright via `npm:pyright`;
-  - perf/watch tools via cargo backends.
-- `G5` Dependency admission bar: must improve correctness/determinism/speed enough to offset maintenance + supply-chain risk.
-- `G6` Task-graph edits require proof in same change: `mise run fast`, `mise run ci`, and replay parity (`python -m scripts.replay_check` when relevant).
-- `G7` Artifact contract:
-  - run outputs live under `out/<run>/`;
-  - perf smoke writes `out/bench.json`;
-  - protocol/trace/schema scripts must consume emitted artifacts, not hidden state.
-- `G8` Performance policy: regressions need quantified delta + rationale + mitigation plan, else rollback.
-- `G9` Future extension rule: adding a new gate/tool must define placement by cost-first reject power and deterministic value, then codify in docs/tests/tasks together.
+- `G0` `mise` is the only task contract; authoritative CI entrypoint is `mise run ci`.
+- `G1` Gate order is fixed fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
+- `G2` `fast` is <3s-class signal, not mini-CI; keep high-reject/low-cost checks only.
+- `G3` Scripts run as modules (`python -m scripts.*`) only.
+- `G4` Backend/tool pins are policy (determinism/supply-chain control), not convenience.
+- `G5` New dependency bar: measurable correctness/determinism/perf win > ongoing maintenance+risk.
+- `G6` Task-graph edits must prove value in same change via `mise run fast`, `mise run ci`, and replay check when boundary semantics changed.
+- `G7` Artifact law: emitted artifacts are source of truth (`out/<run>/...`); linters/checkers consume artifacts, never hidden process state.
+- `G8` Bench law: keep raw telemetry and canonical verdict bytes separate; CI gates on canonical artifact.
+- `G9` Exit codes are standardized in scripts/runners: `0` pass, `1` business failure, `2` integrity failure.
+- `G10` Extension admission (new gate/tool) requires explicit placement rationale: earliest stage with max reject power and minimal deterministic cost.
