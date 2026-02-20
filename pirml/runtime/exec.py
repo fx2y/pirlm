@@ -317,9 +317,17 @@ def _result_row(call_id: str, tool: str, result_frame: Mapping[str, Any]) -> Res
         "ok": bool(result_frame.get("ok")),
     }
     if not bool(result_frame.get("ok")):
-        error = result_frame.get("error")
-        if isinstance(error, Mapping):
-            row["error"] = cast(ErrorObject, dict(cast(Mapping[str, Any], error)))
+        error_val = result_frame.get("error")
+        if isinstance(error_val, Mapping):
+            # G14: Sanitize error fields to prevent leaks
+            error_src = cast(Mapping[str, Any], error_val)
+            error_dst: ErrorObject = {
+                "type": str(error_src.get("type", "unknown")),
+                "msg": str(error_src.get("msg", "")),
+            }
+            if "retryable" in error_src:
+                error_dst["retryable"] = bool(error_src.get("retryable"))
+            row["error"] = error_dst
     return row
 
 
@@ -442,16 +450,16 @@ def _fallback_final(
 
 
 def _project_final_result(raw: Any, fallback_results: list[ResultRow]) -> FinalResult:
+    """G4: Project and sanitize final results array to prevent leaks."""
     if not isinstance(raw, Mapping):
         return {"ok": False, "results": fallback_results}
 
     m_raw = cast(Mapping[str, Any], raw)
     ok = bool(m_raw["ok"]) if "ok" in m_raw else False
-    results = cast(list[ResultRow], m_raw["results"]) if "results" in m_raw else []
 
-    # G11: If program didn't provide results but supervisor has some, backfill.
-    if not results and fallback_results:
-        results = fallback_results
+    # G15: Always favor supervisor's ground truth for results.
+    # Program-provided results are ignored to ensure no extra fields leak (G14).
+    results = fallback_results
 
     projected: FinalResult = {
         "ok": ok,

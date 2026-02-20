@@ -3,6 +3,7 @@
   "title": "FinalResult",
   "type": "object",
   "required": ["ok", "results"],
+  "additionalProperties": false,
   "properties": {
     "ok": {
       "type": "boolean"
@@ -12,6 +13,7 @@
       "items": {
         "type": "object",
         "required": ["id", "tool", "ok"],
+        "additionalProperties": false,
         "properties": {
           "id": {
             "type": "string",
@@ -26,6 +28,7 @@
           "error": {
             "type": "object",
             "required": ["type", "msg"],
+            "additionalProperties": false,
             "properties": {
               "type": {
                 "type": "string"

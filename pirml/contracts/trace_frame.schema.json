@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TraceFrame",
+  "oneOf": [
+    {
+      "title": "CallFrame",
+      "type": "object",
+      "required": ["op", "id", "tool", "args", "ts", "seq", "dir", "ms", "sha256_args"],
+      "properties": {
+        "op": { "const": "call" },
+        "id": { "type": "string", "pattern": "^c[0-9]{5}$" },
+        "tool": { "type": "string" },
+        "args": { "type": "object" },
+        "timeout": { "type": "number" },
+        "ts": { "type": "integer" },
+        "seq": { "type": "integer" },
+        "dir": { "const": "in" },
+        "ms": { "type": "integer" },
+        "sha256_args": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "ResultFrame",
+      "type": "object",
+      "required": ["op", "id", "ok", "ts", "seq", "dir", "ms", "sha256_output"],
+      "properties": {
+        "op": { "const": "result" },
+        "id": { "type": "string", "pattern": "^c[0-9]{5}$" },
+        "ok": { "type": "boolean" },
+        "output": {},
+        "error": {
+          "type": "object",
+          "required": ["type", "msg"],
+          "properties": {
+            "type": { "type": "string" },
+            "msg": { "type": "string" },
+            "retryable": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "meta": { "type": "object" },
+        "ts": { "type": "integer" },
+        "seq": { "type": "integer" },
+        "dir": { "const": "out" },
+        "ms": { "type": "integer" },
+        "sha256_output": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "truncated": { "type": "boolean" },
+        "truncated_bytes": { "type": "integer" }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "FinalFrame",
+      "type": "object",
+      "required": ["op", "ok", "result", "ts", "seq", "dir", "ms", "sha256_output"],
+      "properties": {
+        "op": { "const": "final" },
+        "ok": { "type": "boolean" },
+        "result": {
+          "type": "object",
+          "required": ["ok", "results"],
+          "properties": {
+            "ok": { "type": "boolean" },
+            "results": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "tool", "ok"],
+                "properties": {
+                  "id": { "type": "string", "pattern": "^c[0-9]{5}$" },
+                  "tool": { "type": "string" },
+                  "ok": { "type": "boolean" },
+                  "error": {
+                    "type": "object",
+                    "required": ["type", "msg"],
+                    "properties": {
+                      "type": { "type": "string" },
+                      "msg": { "type": "string" },
+                      "retryable": { "type": "boolean" }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "output": {},
+            "meta": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        "meta": { "type": "object" },
+        "ts": { "type": "integer" },
+        "seq": { "type": "integer" },
+        "dir": { "const": "in" },
+        "ms": { "type": "integer" },
+        "sha256_output": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
