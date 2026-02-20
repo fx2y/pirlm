@@ -68,25 +68,34 @@ class WebPipeline:
                 if doc["status"] != 200:
                     continue
 
-                # C2.T0: HTML extraction
-                chunks = extract_html_chunks(
-                    doc["body"],
-                    url=doc["url"],
-                    doc_sha256=doc["body_sha256"],
-                    source_rank=row["rank"],
-                    doc_rank=i,
-                )
-
-                # C2.T1: Fallback if low coverage
-                if len(chunks) < 3:
-                    chunks.extend(
-                        fallback_extract(
-                            doc["body"],
-                            url=doc["url"],
-                            doc_sha256=doc["body_sha256"],
-                            source_rank=row["rank"],
-                            doc_rank=i,
+                # C3.T3 / B3 switch
+                if plan.parser == "html_parser_primary":
+                    chunks = extract_html_chunks(
+                        doc["body"],
+                        url=doc["url"],
+                        doc_sha256=doc["body_sha256"],
+                        source_rank=row["rank"],
+                        doc_rank=i,
+                    )
+                    # C2.T1: Fallback if low coverage
+                    if len(chunks) < 3:
+                        chunks.extend(
+                            fallback_extract(
+                                doc["body"],
+                                url=doc["url"],
+                                doc_sha256=doc["body_sha256"],
+                                source_rank=row["rank"],
+                                doc_rank=i,
+                            )
                         )
+                else:
+                    # dumb_text_primary
+                    chunks = fallback_extract(
+                        doc["body"],
+                        url=doc["url"],
+                        doc_sha256=doc["body_sha256"],
+                        source_rank=row["rank"],
+                        doc_rank=i,
                     )
 
                 all_chunks.extend(chunks)
@@ -95,7 +104,6 @@ class WebPipeline:
 
         # 4. Global ETL
         # C2.T2: Boilerplate kill
-        # Warm up global cache first? For now, just use what we have in all_chunks
         import hashlib
         import re
 
@@ -109,12 +117,13 @@ class WebPipeline:
             all_chunks, global_counts=self._global_boilerplate_cache
         )
 
-        # C2.T3: Scorer (Overlap)
-        for c in filtered_chunks:
-            c["score"] = score_query_overlap(c, query=query)
-
-        # C2.T4: Scorer (BM25)
-        filtered_chunks = score_bm25(filtered_chunks, query=query)
+        # C3.T4 / B4 switch
+        if plan.scorer == "bm25_chunk":
+            filtered_chunks = score_bm25(filtered_chunks, query=query)
+        else:
+            # keyword_regex
+            for c in filtered_chunks:
+                c["score"] = score_query_overlap(c, query=query)
 
         # C2.T5: Global selector
         top_chunks = select_top_chunks(filtered_chunks, n=plan.max_chunks)
@@ -125,11 +134,12 @@ class WebPipeline:
 
         # 6. Cite
         # C2.T7: Pack citations
-        citations = pack_citations(joined_chunks, clock=self.clock, query=query)
+        citations = pack_citations(
+            joined_chunks, clock=self.clock, query=query, mode=plan.cite_mode
+        )
 
         # 7. Project final
-        # Simple answer generation for now (summary of top chunks)
-        # In a real system, this would be an LLM call
+        # Simple answer generation for now
         answer = " ".join([c["text"] for c in joined_chunks[:3]])
 
         return project_final(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from collections import defaultdict
 from collections.abc import Sequence
@@ -73,4 +74,43 @@ class MockProvider:
         return rows
 
 
-__all__ = ["MockProvider", "Provider", "rank_and_diversify"]
+class SearxJsonProvider:
+    """B1a: Searx JSON provider (re-uses MockProvider logic for now but typed for B1)."""
+
+    def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
+        self._mock = MockProvider(responses)
+
+    async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]:
+        if tracer:
+            tracer.emit("search_call", q=query, provider="searx_json")
+        return await self._mock.search(query, tracer=tracer)
+
+
+class VendorHttpProvider:
+    """B1b: Vendor HTTP provider (re-uses MockProvider logic for now but typed for B1)."""
+
+    def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
+        self._mock = MockProvider(responses)
+
+    async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]:
+        if tracer:
+            tracer.emit("search_call", q=query, provider="vendor_http")
+        return await self._mock.search(query, tracer=tracer)
+
+
+def provider_factory(kind: str, responses: dict[str, list[SerpRow]]) -> Provider:
+    if kind == "searx_json":
+        return SearxJsonProvider(responses)
+    if kind == "vendor_http":
+        return VendorHttpProvider(responses)
+    return MockProvider(responses)
+
+
+__all__ = [
+    "MockProvider",
+    "Provider",
+    "SearxJsonProvider",
+    "VendorHttpProvider",
+    "provider_factory",
+    "rank_and_diversify",
+]

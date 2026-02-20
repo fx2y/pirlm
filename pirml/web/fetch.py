@@ -235,7 +235,7 @@ class FixtureDocFetcher:
         payload = self._records[key]
 
         if tracer:
-            tracer.emit("fetch_call", url=key, cache_hit=True)
+            tracer.emit("fetch_call", url=key, cache_hit=False)
         # In fixture mode, we don't really support 304 unless we mock it in manifest
         # For now, just return 200
         body_sha256 = hashlib.sha256(payload.body).hexdigest()
@@ -258,7 +258,7 @@ class FixtureDocFetcher:
                 status=row["status"],
                 bytes=row["bytes"],
                 sha256=row["body_sha256"],
-                cache_hit=True,
+                cache_hit=False,
             )
         return row
 
@@ -292,8 +292,9 @@ class CachedDocFetcher:
             tracer.emit("fetch_call", url=key, cache_hit=hit is not None)
 
         start_ms = int(time.time() * 1000)
+        # Don't pass tracer to underlying fetcher to avoid duplicate frames
         row = await self._fetcher.fetch(
-            url, etag=effective_etag, last_modified=effective_last_mod, tracer=tracer
+            url, etag=effective_etag, last_modified=effective_last_mod, tracer=None
         )
 
         if row["status"] == 304 and hit:
@@ -319,7 +320,7 @@ class CachedDocFetcher:
                     "headers": updated["headers"],
                     "content_type": updated["headers"].get("content-type", "text/html"),
                     "bytes": len(updated["body"]),
-                    "encoding_guess": "utf-8",  # Cached bodies are usually normalized
+                    "encoding_guess": "utf-8",
                     "body": _decode_body(updated["body"], "utf-8"),
                     "body_sha256": updated["body_sha256"],
                 }
@@ -336,6 +337,16 @@ class CachedDocFetcher:
                     "headers": row["headers"],
                 }
             )
+            if tracer:
+                tracer.emit(
+                    "fetch_result",
+                    url=key,
+                    status=200,
+                    bytes=row["bytes"],
+                    sha256=row["body_sha256"],
+                    cache_hit=False,
+                    ms=int(time.time() * 1000) - start_ms,
+                )
 
         return row
 
