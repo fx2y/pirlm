@@ -38,9 +38,7 @@ class SearchHit(NamedTuple):
 class BM25Index:
     """C2.T2: Deterministic BM25 scorer using stdlib."""
 
-    def __init__(
-        self, catalog: dict[str, ToolManifest], k1: float = 1.5, b: float = 0.75
-    ):
+    def __init__(self, catalog: dict[str, ToolManifest], k1: float = 1.5, b: float = 0.75):
         self.k1 = k1
         self.b = b
         self.catalog = catalog
@@ -90,8 +88,7 @@ class BM25Index:
                 idf = math.log(1 + (self.N - df + 0.5) / (df + 0.5))
                 # s += idf*((tf*(k1+1))/(tf+k1*(1-b+b*dl/avdl)))
                 score += idf * (
-                    (tf * (self.k1 + 1))
-                    / (tf + self.k1 * (1 - self.b + self.b * dl / self.avdl))
+                    (tf * (self.k1 + 1)) / (tf + self.k1 * (1 - self.b + self.b * dl / self.avdl))
                 )
 
             m = self.catalog[name]

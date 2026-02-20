@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import unittest
-from pirml.toolsearch.search import search_tools, SearchError
+
 from pirml.contracts.schemas import ToolManifest
+from pirml.toolsearch.search import SearchError, search_tools
 
 
 class TestToolSearch(unittest.TestCase):
@@ -14,24 +15,20 @@ class TestToolSearch(unittest.TestCase):
                 "description": "Returns the input string. Use for identity operations. Do not use for logging.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {
-                        "text": {"type": "string", "description": "The text to echo"}
-                    }
+                    "properties": {"text": {"type": "string", "description": "The text to echo"}},
                 },
                 "defer_loading": False,  # Hot tool
-                "tags": ["utility", "debug"]
+                "tags": ["utility", "debug"],
             },
             "readfile": {
                 "name": "readfile",
                 "description": "Reads a file from disk. Use for local access. Do not use for network files.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The file path"}
-                    }
+                    "properties": {"path": {"type": "string", "description": "The file path"}},
                 },
                 "defer_loading": False,  # Hot tool
-                "tags": ["fs", "io"]
+                "tags": ["fs", "io"],
             },
             "bash": {
                 "name": "bash",
@@ -40,10 +37,10 @@ class TestToolSearch(unittest.TestCase):
                     "type": "object",
                     "properties": {
                         "command": {"type": "string", "description": "The command string"}
-                    }
+                    },
                 },
                 "defer_loading": True,  # Deferred tool
-                "tags": ["script", "os"]
+                "tags": ["script", "os"],
             },
             "grep": {
                 "name": "grep",
@@ -52,36 +49,32 @@ class TestToolSearch(unittest.TestCase):
                     "type": "object",
                     "properties": {
                         "pattern": {"type": "string", "description": "The regex pattern"},
-                        "path": {"type": "string", "description": "The file path"}
-                    }
+                        "path": {"type": "string", "description": "The file path"},
+                    },
                 },
                 "defer_loading": True,
-                "tags": ["fs", "search"]
+                "tags": ["fs", "search"],
             },
             "ls": {
                 "name": "ls",
                 "description": "Lists files in a directory. Use for exploration. Do not use for bulk metadata.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The directory path"}
-                    }
+                    "properties": {"path": {"type": "string", "description": "The directory path"}},
                 },
                 "defer_loading": True,
-                "tags": ["fs", "exploration"]
+                "tags": ["fs", "exploration"],
             },
             "mkdir": {
                 "name": "mkdir",
                 "description": "Creates a directory. Use for setup. Do not use for temporary files.",
                 "input_schema": {
                     "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "The directory path"}
-                    }
+                    "properties": {"path": {"type": "string", "description": "The directory path"}},
                 },
                 "defer_loading": True,
-                "tags": ["fs", "setup"]
-            }
+                "tags": ["fs", "setup"],
+            },
         }
 
     def test_search_top_k(self):

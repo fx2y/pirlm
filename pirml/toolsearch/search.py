@@ -26,18 +26,16 @@ class SearchError(Exception):
         }
 
 
-def regex_search(
-    catalog: dict[str, ToolManifest], pattern: str
-) -> list[str]:
+def regex_search(catalog: dict[str, ToolManifest], pattern: str) -> list[str]:
     """C2.T3: Regex search with safety guards."""
     # S.RX1: Safe regex
     if len(pattern) > 200:
         raise SearchError("pattern_too_long", f"Pattern length {len(pattern)} exceeds 200")
-    
+
     try:
         rx = re.compile(pattern, re.IGNORECASE)
     except re.error as e:
-        raise SearchError("invalid_pattern", str(e))
+        raise SearchError("invalid_pattern", str(e)) from e
 
     hits: list[tuple[str, int, int]] = []
     for name, m in catalog.items():
@@ -50,7 +48,7 @@ def regex_search(
     # Stable sort for regex results (no score, so use tie-breakers)
     # S.SR1: Deterministic rank key (simplified for regex)
     hits.sort(key=lambda h: (h[1], h[2], h[0]))
-    
+
     return [h[0] for h in hits]
 
 
@@ -74,17 +72,19 @@ def search_tools(
     else:
         index = BM25Index(catalog)
         hits = index.score(query)
-        
+
         # S.SR1: Deterministic rank key
         # key=lambda h:(-h.score,0 if h.name==q_exact else 1,h.hot_rank,h.arg_count,h.name)
         # Note: we don't have q_exact easily here without passing it, but name match is a good tie-breaker
-        hits.sort(key=lambda h: (
-            -h.score, 
-            0 if h.name.lower() == query.lower() else 1,
-            h.hot_rank,
-            h.arg_count,
-            h.name
-        ))
+        hits.sort(
+            key=lambda h: (
+                -h.score,
+                0 if h.name.lower() == query.lower() else 1,
+                h.hot_rank,
+                h.arg_count,
+                h.name,
+            )
+        )
         names = [h.name for h in hits]
 
     return names[:k]
