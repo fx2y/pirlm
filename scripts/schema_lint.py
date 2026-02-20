@@ -184,17 +184,19 @@ def _parse_row_artifact(path: Path) -> tuple[list[Any], list[str]]:
     if not stripped:
         return [], ["artifact is empty"]
 
+    # Try full JSON first (array or single object)
     if stripped[0] in "[{":
         try:
             parsed = json.loads(stripped)
-        except json.JSONDecodeError as exc:
-            return [], [f"invalid JSON: {exc}"]
-        if isinstance(parsed, list):
-            return cast(list[Any], parsed), []
-        if isinstance(parsed, dict):
-            return [parsed], []
-        return [], ["root must be object or array"]
+            if isinstance(parsed, list):
+                return cast(list[Any], parsed), []
+            if isinstance(parsed, dict):
+                return [parsed], []
+        except json.JSONDecodeError:
+            # Might be NDJSON where first line is an object
+            pass
 
+    # Fallback to NDJSON (line-by-line)
     rows: list[Any] = []
     for idx, line in enumerate(text.splitlines(), start=1):
         if not line.strip():

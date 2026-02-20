@@ -67,7 +67,7 @@ class WebC0Tests(unittest.IsolatedAsyncioTestCase):
             )
             self.assertEqual(citations[0]["retrieved_at"], 1_700_000_000)
             self.assertEqual(citations[1]["retrieved_at"], 1_700_000_001)
-            # Quote length check: "..." suffix might add to length if clipped, 
+            # Quote length check: "..." suffix might add to length if clipped,
             # but here we check words. _clip_words adds "..." if len > max_words.
             quote0_words = citations[0]["quote"].replace("...", "").split()
             self.assertLessEqual(len(quote0_words), 25)

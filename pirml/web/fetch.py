@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import gzip
 import hashlib
 import json
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 from urllib.request import Request, urlopen
 
+from .cache.base import BaseCache
 from .trace import WebTracer
 from .types import DocRow
 from .urlnorm import normalize_url
@@ -65,8 +67,8 @@ def _decode_body(body: bytes, encoding_guess: str) -> str:
 class RealDocFetcher:
     """Production fetcher using stdlib urllib + asyncio.to_thread."""
 
-    def __init__(self, config: FetchConfig = FetchConfig()) -> None:
-        self._config = config
+    def __init__(self, config: FetchConfig | None = None) -> None:
+        self._config = config or FetchConfig()
 
     async def fetch(
         self,
@@ -152,15 +154,11 @@ class RealDocFetcher:
 
         encoding = headers.get("content-encoding", "").lower()
         if encoding == "gzip":
-            try:
+            with contextlib.suppress(OSError, zlib.error):
                 raw_body = gzip.decompress(raw_body)
-            except (OSError, zlib.error):
-                pass
         elif encoding == "deflate":
-            try:
+            with contextlib.suppress(zlib.error):
                 raw_body = zlib.decompress(raw_body)
-            except zlib.error:
-                pass
 
         encoding_guess = ""
         if "charset=" in headers.get("content-type", "").lower():
@@ -261,9 +259,6 @@ class FixtureDocFetcher:
                 cache_hit=False,
             )
         return row
-
-
-from .cache.base import BaseCache
 
 
 class CachedDocFetcher:

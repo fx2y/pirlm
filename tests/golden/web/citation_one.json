@@ -1,0 +1,9 @@
+[
+  {
+    "chunk_id": "ck001",
+    "doc_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "quote": "PIRML is a deterministic substrate for LLM orchestration.",
+    "retrieved_at": 1700000000,
+    "url": "https://example.com/a"
+  }
+]

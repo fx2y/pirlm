@@ -1,0 +1,35 @@
+[
+  {
+    "chunk_id": "ck0000",
+    "doc_rank": 1,
+    "doc_sha256": "s1",
+    "kind": "title",
+    "path_hint": "html>head",
+    "score": 0.0,
+    "source_rank": 1,
+    "text": "PIRML Fixture Page",
+    "url": "https://example.com/p"
+  },
+  {
+    "chunk_id": "ck0001",
+    "doc_rank": 1,
+    "doc_sha256": "s1",
+    "kind": "h1",
+    "path_hint": "html>body",
+    "score": 0.0,
+    "source_rank": 1,
+    "text": "Deterministic Fixture",
+    "url": "https://example.com/p"
+  },
+  {
+    "chunk_id": "ck0002",
+    "doc_rank": 1,
+    "doc_sha256": "s1",
+    "kind": "p",
+    "path_hint": "html>body",
+    "score": 0.0,
+    "source_rank": 1,
+    "text": "This fixture body is used for offline web substrate tests.",
+    "url": "https://example.com/p"
+  }
+]

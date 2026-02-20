@@ -36,7 +36,7 @@ def fallback_extract(
         if not chunk_text:
             continue
 
-        chunk_id = f"fb{i//chunk_size:04d}"
+        chunk_id = f"fb{i // chunk_size:04d}"
         chunks.append(
             {
                 "url": url,

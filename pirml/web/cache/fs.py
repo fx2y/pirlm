@@ -63,9 +63,7 @@ class FsCache(BaseCache):
         with p.open("w") as f:
             json.dump(meta, f)
 
-    def mark_304(
-        self, key: str, *, etag: str | None, last_modified: str | None
-    ) -> CacheHit | None:
+    def mark_304(self, key: str, *, etag: str | None, last_modified: str | None) -> CacheHit | None:
         hit = self.get(key)
         if not hit:
             return None
@@ -85,7 +83,7 @@ class FsCache(BaseCache):
         return hit
 
     def dedup_by_sha(self, body_sha256: str) -> list[str]:
-        results = []
+        results: list[str] = []
         for p in self._meta_dir.glob("*"):
             try:
                 with p.open("r") as f:

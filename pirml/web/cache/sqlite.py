@@ -85,9 +85,7 @@ class SqliteCache(BaseCache):
             ),
         )
 
-    def mark_304(
-        self, key: str, *, etag: str | None, last_modified: str | None
-    ) -> CacheHit | None:
+    def mark_304(self, key: str, *, etag: str | None, last_modified: str | None) -> CacheHit | None:
         # Update metadata for existing entry
         self._conn.execute(
             "UPDATE http_meta SET etag = ?, last_modified = ?, fetched_at = ? WHERE key = ?",

@@ -11,7 +11,9 @@ class TestURLNorm(unittest.TestCase):
         self.assertEqual(normalize_url("https://example.com/path/"), "https://example.com/path/")
 
     def test_fragment_stripped(self) -> None:
-        self.assertEqual(normalize_url("https://example.com/path#fragment"), "https://example.com/path")
+        self.assertEqual(
+            normalize_url("https://example.com/path#fragment"), "https://example.com/path"
+        )
 
     def test_utm_params_stripped(self) -> None:
         self.assertEqual(
@@ -27,7 +29,9 @@ class TestURLNorm(unittest.TestCase):
 
     def test_empty_query_stripped(self) -> None:
         self.assertEqual(normalize_url("https://example.com/path?"), "https://example.com/path")
-        self.assertEqual(normalize_url("https://example.com/path?utm_campaign=xyz"), "https://example.com/path")
+        self.assertEqual(
+            normalize_url("https://example.com/path?utm_campaign=xyz"), "https://example.com/path"
+        )
 
     def test_idempotent(self) -> None:
         url = "https://EXAMPLE.COM/Path?B=2&utm_X=Y&A=1#FRAG"

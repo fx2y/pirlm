@@ -12,7 +12,7 @@ from .etl.html_chunks import extract_html_chunks
 from .etl.join import join_chunks
 from .etl.score import score_bm25, score_query_overlap
 from .search import rank_and_diversify
-from .types import CiteRow, WebFinal
+from .types import ChunkRow, CiteRow, WebFinal
 
 if TYPE_CHECKING:
     from .fetch import Fetcher
@@ -61,7 +61,7 @@ class WebPipeline:
         )
 
         # 3. Fetch + ETL
-        all_chunks = []
+        all_chunks: list[ChunkRow] = []
         for i, row in enumerate(selected_serp):
             try:
                 doc = await self.fetcher.fetch(row["url"], tracer=self.tracer)
@@ -113,9 +113,7 @@ class WebPipeline:
                 h = hashlib.sha256(clean.encode()).hexdigest()[:16]
                 self._global_boilerplate_cache[h] += 1
 
-        filtered_chunks = kill_boilerplate(
-            all_chunks, global_counts=self._global_boilerplate_cache
-        )
+        filtered_chunks = kill_boilerplate(all_chunks, global_counts=self._global_boilerplate_cache)
 
         # C3.T4 / B4 switch
         if plan.scorer == "bm25_chunk":
