@@ -89,7 +89,7 @@ run = "mise run fmt && mise run lint && mise run types && mise run unit && mise 
 
 [tasks.bench]
 description = "Perf smoke benchmark with hyperfine"
-run = "python -m scripts.bench"
+run = "python -m scripts.bench && python -m scripts.artifact_bench"
 
 [tasks."bench-web"]
 description = "Web substrate benchmark"

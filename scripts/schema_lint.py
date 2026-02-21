@@ -614,8 +614,16 @@ def validate_artifact_trace_row(row: Any, index: int) -> list[str]:
         errors.append(f"{path}.ts must be an integer")
     if "ev" in row and not isinstance(row["ev"], str):
         errors.append(f"{path}.ev must be a string")
-    if "aid" in row and not isinstance(row["aid"], str):
-        errors.append(f"{path}.aid must be a string")
+    if "ev" in row:
+        ev = cast(str, row["ev"])
+        if ev == "put":
+            for req in ["aid", "kind", "mime", "bytes", "sha256", "path", "parents", "src"]:
+                if req not in row:
+                    errors.append(f"{path}.{req} missing for ev=put")
+        elif ev == "view":
+            for req in ["aid", "vid", "spec", "stats", "sha256", "path"]:
+                if req not in row:
+                    errors.append(f"{path}.{req} missing for ev=view")
     return errors
 
 

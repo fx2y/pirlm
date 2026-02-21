@@ -31,7 +31,7 @@ class RlmHistoryFrame(TypedDict):
     prefix: str  # First 100 chars
     len: int  # Full stdout length
     ts: int
-    ev: Literal["call", "result", "log"]
+    ev: Literal["call", "result", "log", "custom"]
     code: NotRequired[str]  # The code that was executed
     aid: NotRequired[str]  # artifact_id link
     vid: NotRequired[str]  # view_id link

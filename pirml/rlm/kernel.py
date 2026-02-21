@@ -129,7 +129,7 @@ class RlmKernel:
                 if hasattr(self.store.layout, "root"):
                     out_path = Path(self.store.layout.root) / "web_output.json"
                     # S32: Project final under root {ok,results,output?,meta?}
-                    web_out = {
+                    web_out: dict[str, Any] = {
                         "ok": True,
                         "results": [],  # Supervisor fills this in runtime, but placeholder for now
                         "output": {
@@ -171,10 +171,10 @@ class RlmKernel:
         items: list[dict[str, Any]] = []
         # Variables
         s_dict = state.to_dict()
-        for k, v in s_dict.items():
+        for k, v in cast(Mapping[str, Any], s_dict).items():
             critical = k == "P"
             if isinstance(v, list) and k in ("DOCS", "CHUNKS", "SUMS", "BUF"):
-                v_list = cast("list[Any]", v)
+                v_list = cast(list[Any], v)
                 # S34: Handle-only ctx pack / excerpt
                 items.append(
                     {
@@ -195,8 +195,9 @@ class RlmKernel:
                         }
                     )
             else:
+                v_any: Any = v  # type: ignore[reportUnknownVariableType]
                 items.append(
-                    {"id": f"var:{k}", "text": str(v), "kind": "var", "critical": critical}
+                    {"id": f"var:{k}", "text": str(v_any), "kind": "var", "critical": critical}
                 )
 
         # History
@@ -238,6 +239,7 @@ class RlmKernel:
 
         if self.emit_pi_pointers:
             from pirml.runtime.rpc import send_custom
+
             tokens_before = sum(est_tokens(it["text"]) for it in items)
             first_kept = final_ids[0] if final_ids else None
             send_custom(

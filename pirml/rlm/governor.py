@@ -59,7 +59,7 @@ def pack_ctx(
     """C5.T02: pack_ctx selects items by max(relevance/token_cost) under hard K cap.
     Stability: sort by relevance/cost DESC, then cost ASC, then id ASC.
     """
-    c_items = []
+    c_items: list[ContextItem] = []
     for it in items:
         text = it.get("text", "")
         if not isinstance(text, str):
@@ -85,7 +85,7 @@ def pack_ctx(
 
     sorted_items = sorted(c_items, key=sort_key)
 
-    packed_ids = []
+    packed_ids: list[str] = []
     current_cost = 0
     for ci in sorted_items:
         if current_cost + ci.cost <= k_limit:
@@ -102,7 +102,7 @@ def apply_cohesion_rule(packed_ids: list[str], items: list[dict[str, Any]]) -> l
     """
     {it["id"]: it for it in items}
     packed_set = set(packed_ids)
-    final_ids = []
+    final_ids: list[str] = []
 
     for i, it in enumerate(items):
         if it["id"] in packed_set:
@@ -128,8 +128,8 @@ def apply_cohesion_rule(packed_ids: list[str], items: list[dict[str, Any]]) -> l
             final_ids.append(it["id"])  # Force result into context (optional, but good)
 
     # Re-sort/dedup preserving order
-    unique_ids = []
-    seen = set()
+    unique_ids: list[str] = []
+    seen: set[str] = set()
     for o_it in items:
         oid = o_it["id"]
         if oid in final_ids and oid not in seen:
@@ -147,7 +147,7 @@ def create_citation_map(
     Adds: {artifact_id, view_id}
     """
     # Simple heuristic: find artifact IDs mentioned in output
-    citations = []
+    citations: list[dict[str, Any]] = []
     import time
 
     now = int(time.time())
@@ -157,7 +157,7 @@ def create_citation_map(
     # regex for view IDs (vid_...)
     vids = re.findall(r"vid_[a-f0-9]{16,}", output)
 
-    seen = set()
+    seen: set[str] = set()
     for aid in aids:
         if aid in seen:
             continue

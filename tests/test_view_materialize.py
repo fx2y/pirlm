@@ -11,7 +11,7 @@ from typing import Any, cast
 from pirml.artifacts.errors import ArtifactErrorType, ArtifactPathError
 from pirml.artifacts.paths import default_layout
 from pirml.artifacts.store import ArtifactStore
-from pirml.artifacts.view_dsl import SliceSpec, derive_view_id
+from pirml.artifacts.view_dsl import SliceSpec, view_id_for
 from pirml.artifacts.view_materialize import ViewMaterializer
 
 
@@ -29,13 +29,13 @@ class TestViewMaterialize(unittest.TestCase):
         # C2.T01: same artifact+spec => identical view_id
         aid = "a" * 64
         spec = cast(SliceSpec, {"op": "lines", "a": 1, "b": 10})
-        vid1 = derive_view_id(aid, spec)
-        vid2 = derive_view_id(aid, spec)
+        vid1 = view_id_for(aid, spec)
+        vid2 = view_id_for(aid, spec)
         self.assertEqual(vid1, vid2)
 
         # Field order should not matter due to canonical_json
         spec2 = cast(SliceSpec, {"b": 10, "op": "lines", "a": 1})
-        vid3 = derive_view_id(aid, spec2)
+        vid3 = view_id_for(aid, spec2)
         self.assertEqual(vid1, vid3)
 
     def test_slice_lines(self) -> None:

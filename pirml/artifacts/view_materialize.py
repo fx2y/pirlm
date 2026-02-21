@@ -10,7 +10,7 @@ from typing import Any, cast
 from pirml.artifacts.errors import ArtifactErrorType, ArtifactPathError
 from pirml.artifacts.io import canonical_json
 from pirml.artifacts.store import ArtifactStore
-from pirml.artifacts.view_dsl import SliceSpec, ViewOpSpec, derive_view_id
+from pirml.artifacts.view_dsl import SliceSpec, ViewOpSpec, view_id_for
 
 
 class HtmlToText(HTMLParser):
@@ -46,7 +46,7 @@ class ViewMaterializer:
         self._layout = store.layout
 
     def materialize(self, aid: str, spec: SliceSpec) -> str:
-        vid = derive_view_id(aid, spec)
+        vid = view_id_for(aid, spec)
 
         # C2.T01: same artifact+spec => identical view_id x3
         meta = self._store.get_meta(vid)

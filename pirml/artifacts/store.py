@@ -29,6 +29,10 @@ class ArtifactStore:
     def trace(self) -> ArtifactTraceWriter:
         return self._trace
 
+    def close(self) -> None:
+        """Close index connection."""
+        self._index.close()
+
     def put_raw(
         self,
         data: bytes,
@@ -190,7 +194,15 @@ class ArtifactStore:
     def rebuild_index(self) -> None:
         """C1.T07: Rebuild sqlite index from trace.ndjson"""
         if self._layout.index_path.exists():
-            self._layout.index_path.unlink()
+            self._index.close()
+            # Clean up main file and sidecars (WAL/SHM)
+            for p in [
+                self._layout.index_path,
+                self._layout.index_path.with_name(self._layout.index_path.name + "-shm"),
+                self._layout.index_path.with_name(self._layout.index_path.name + "-wal"),
+            ]:
+                if p.exists():
+                    p.unlink()
 
         self._index = ArtifactsIndex(self._layout.index_path)
 
@@ -213,4 +225,29 @@ class ArtifactStore:
                         "ts": frame["ts"],
                         "notes": frame.get("notes"),
                     }
+                    self._index.put(rec)
+                elif frame.get("ev") == "view":
+                    rec: ArtifactRecord = {
+                        "id": frame["vid"],
+                        "kind": "slice",
+                        "mime": "application/x-ndjson",
+                        "bytes": len(
+                            frame.get("sha256", "")
+                        ),  # bytes not in view frame, but path exists
+                        "sha256": frame["sha256"],
+                        "path": frame["path"],
+                        "parents": [frame["aid"]],
+                        "src": {
+                            "vid": frame["vid"],
+                            "aid": frame["aid"],
+                            "spec": frame["spec"],
+                            "stats": frame["stats"],
+                        },
+                        "ts": frame["ts"],
+                        "notes": f"View {frame['vid']} for {frame['aid']}",
+                    }
+                    # We need to get the actual byte length if we want perfection
+                    p = self._layout.root / frame["path"]
+                    if p.exists():
+                        rec["bytes"] = p.stat().st_size
                     self._index.put(rec)

@@ -14,7 +14,6 @@ class Spec06C0DeclaredFailures(unittest.TestCase):
     def test_c3_metadata_only_history_suite_declared(self) -> None:
         importlib.import_module("pirml.rlm.history")
 
-    @unittest.expectedFailure
     def test_c5_ctx_cap_suite_declared(self) -> None:
         importlib.import_module("pirml.rlm.governor")
 
