@@ -134,31 +134,15 @@ class RlmKernel:
                 print(f"Error: {e}")
         return stdout.getvalue()
 
-    def _read_view_text(self, vid: str) -> str:
-        path_str = self.store.index.get_path(vid)
-        if not path_str:
-            raise RlmKernelError(error_type=RlmErrorType.INTEGRITY, msg=f"View missing: {vid}")
-        abs_path = self.store.layout.root / path_str
-        texts: list[str] = []
-        with abs_path.open("r", encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    try:
-                        row = json.loads(line)
-                        texts.append(row.get("text", ""))
-                    except json.JSONDecodeError:
-                        continue
-        return "\n".join(texts)
-
     def _get_helper(self, aid_vid: str, spec: SliceSpec | None = None) -> str:
         try:
             if spec:
                 vid = self.view_vm.materialize(aid_vid, spec)
-                return self._read_view_text(vid)
+                return self.store.get_view_text(vid)
             else:
                 kind = self.store.index.get_kind(aid_vid)
                 if kind == "slice":
-                    return self._read_view_text(aid_vid)
+                    return self.store.get_view_text(aid_vid)
                 elif kind:
                     return self.store.get_bytes(aid_vid).decode("utf-8", errors="replace")
                 else:

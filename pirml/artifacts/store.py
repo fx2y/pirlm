@@ -164,6 +164,25 @@ class ArtifactStore:
         """C1.T06: Retrieve parent ids for an artifact"""
         return self._index.resolve_parents(aid)
 
+    def get_view_text(self, vid: str) -> str:
+        """Helper to read and concatenate text from an ndjson view."""
+        path_str = self._index.get_path(vid)
+        if not path_str:
+            raise ArtifactPathError(
+                error_type=ArtifactErrorType.NOT_FOUND, msg=f"View missing: {vid}"
+            )
+        abs_path = self._layout.root / path_str
+        texts: list[str] = []
+        with abs_path.open("r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        row = json.loads(line)
+                        texts.append(row.get("text", ""))
+                    except json.JSONDecodeError:
+                        continue
+        return "\n".join(texts)
+
     def rebuild_index(self) -> None:
         """C1.T07: Rebuild sqlite index from trace.ndjson"""
         if self._layout.index_path.exists():
