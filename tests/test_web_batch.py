@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 import unittest
+
 from pirml.web.etl import chunk_views, pack_batches
+
 
 class TestWebBatch(unittest.TestCase):
     def test_chunk_views_deterministic(self) -> None:
@@ -9,7 +12,7 @@ class TestWebBatch(unittest.TestCase):
         chunks = chunk_views([text], max_chars=2000)
         self.assertTrue(len(chunks) >= 3)
         self.assertEqual("".join(chunks).replace("\n\n", ""), text.replace("\n\n", ""))
-        
+
         # Test hard cut
         text2 = "B" * 3000
         chunks2 = chunk_views([text2], max_chars=1000)
@@ -22,6 +25,7 @@ class TestWebBatch(unittest.TestCase):
         self.assertEqual(len(batches), 2)
         self.assertIn("Chunk 1\n---\nChunk 2", batches[0])
         self.assertEqual(batches[1], "Chunk 3")
+
 
 if __name__ == "__main__":
     unittest.main()

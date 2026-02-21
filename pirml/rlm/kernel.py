@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import io
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, cast
 
 from pirml.artifacts.errors import ArtifactPathError
@@ -13,7 +15,6 @@ from pirml.artifacts.view_dsl import SliceSpec
 from pirml.artifacts.view_materialize import ViewMaterializer
 from pirml.clock import SequenceClock
 from pirml.compiler.model import ModelAdapter
-import asyncio
 from pirml.web.etl import chunk_views, pack_batches
 
 from .errors import RlmKernelError
@@ -95,7 +96,7 @@ class RlmKernel:
                 )
 
             # 1. Root LM generates code
-            full_prompt = self._build_prompt(state)
+            full_prompt = self.build_prompt(state)
             code = await asyncio.to_thread(self.model.compile_once, full_prompt)
 
             # 2. REPL exec
@@ -112,6 +113,26 @@ class RlmKernel:
 
             # 4. Stop condition C3.T04
             if state.Final is not None:
+                # C5.T05/T06: Project final and pack citations
+                from .governor import create_citation_map
+
+                citations = create_citation_map([], str(state.Final))
+
+                # C5.T07: Emit web_output.json (Optional, if store has a base path)
+                if hasattr(self.store.layout, "root"):
+                    out_path = Path(self.store.layout.root) / "web_output.json"
+                    # S32: Project final under root {ok,results,output?,meta?}
+                    web_out = {
+                        "ok": True,
+                        "results": [],  # Supervisor fills this in runtime, but placeholder for now
+                        "output": {
+                            "answer": str(state.Final),
+                            "citations": citations,
+                        },
+                        "meta": {"iters": iters + 1, "subcalls": self._subcall_count},
+                    }
+                    out_path.write_text(json.dumps(web_out, indent=2))
+
                 return state.Final
 
             iters += 1
@@ -121,9 +142,75 @@ class RlmKernel:
             msg=f"Max iterations ({self.budget['max_iters']}) reached without Final set",
         )
 
-    def _build_prompt(self, state: RlmState) -> str:
-        # Simplistic prompt for now, showing metadata-only history
-        return f"Prompt: {state.P}\nHistory: {self.history.to_dict_list()}\nVars: {state.to_dict()}"
+    def build_prompt(self, state: RlmState) -> str:
+        # C5.T02/T04: Context Governor with bulk off-ctx
+        from .governor import K_CAP_TOKENS, apply_cohesion_rule, pack_ctx
+
+        items: list[dict[str, Any]] = []
+        # Variables
+        s_dict = state.to_dict()
+        for k, v in s_dict.items():
+            critical = k == "P"
+            if isinstance(v, list) and k in ("DOCS", "CHUNKS", "SUMS", "BUF"):
+                v_list = cast("list[Any]", v)
+                # S34: Handle-only ctx pack / excerpt
+                items.append(
+                    {
+                        "id": f"var:{k}",
+                        "text": f"BulkVar {k}: list (len={len(v_list)})",  # Meta only
+                        "kind": "var",
+                        "critical": critical,
+                    }
+                )
+                # Add excerpts separately as candidates
+                for i, x in enumerate(v_list[:50]):
+                    items.append(
+                        {
+                            "id": f"var:{k}:{i}",
+                            "text": f"{k}[{i}]: {str(x)[:240]}",  # S34 excerpt cap
+                            "kind": "excerpt",
+                            "critical": False,
+                        }
+                    )
+            else:
+                items.append(
+                    {"id": f"var:{k}", "text": str(v), "kind": "var", "critical": critical}
+                )
+
+        # History
+        for f in self.history:
+            items.append(
+                {
+                    "id": f"history:{f['seq']}",
+                    "text": f"Hist {f['seq']} ({f['ev']}): {f['prefix']}... (len={f['len']})",
+                    "kind": "history",
+                    "ev": f["ev"],
+                }
+            )
+
+        # Pack under budget
+        packed_ids = pack_ctx(state.P, items, k_limit=K_CAP_TOKENS)
+        # Apply cohesion (ensure call/result pairs stay if applicable, though here mostly logs)
+        final_ids = apply_cohesion_rule(packed_ids, items)
+
+        final_ids_set = set(final_ids)
+        parts = [f"Goal: {state.P}"]
+
+        vars_block: list[str] = []
+        hist_block: list[str] = []
+        for it in items:
+            if it["id"] in final_ids_set:
+                if it["kind"] == "var":
+                    vars_block.append(it["text"])
+                else:
+                    hist_block.append(it["text"])
+
+        if vars_block:
+            parts.append("Variables:\n" + "\n".join(vars_block))
+        if hist_block:
+            parts.append("History:\n" + "\n".join(hist_block))
+
+        return "\n\n".join(parts)
 
     async def _repl_exec(self, state: RlmState, code: str, helpers: dict[str, Any]) -> str:
         # C3.T07: Enforce channel split
@@ -133,10 +220,12 @@ class RlmKernel:
                 globs = state.to_dict()
                 globs.update(helpers)
                 # To support async in exec, we wrap in an async function
-                # or use a more sophisticated approach. 
+                # or use a more sophisticated approach.
                 # For C4, we want top-level await support in the generated code.
                 if "await " in code:
-                    wrap_code = f"async def __rlm_exec_wrap():\n" + "\n".join(f"    {l}" for l in code.splitlines())
+                    wrap_code = "async def __rlm_exec_wrap():\n" + "\n".join(
+                        f"    {line}" for line in code.splitlines()
+                    )
                     locs: dict[str, Any] = {}
                     exec(wrap_code, globs, locs)
                     await locs["__rlm_exec_wrap"]()
@@ -147,6 +236,7 @@ class RlmKernel:
                 raise
             except Exception as e:
                 import traceback
+
                 traceback.print_exc()
                 print(f"Error: {e}")
         return stdout.getvalue()
@@ -172,7 +262,11 @@ class RlmKernel:
             raise RlmKernelError(error_type=RlmErrorType.INTEGRITY, msg=str(e)) from e
 
     def _put_helper(
-        self, data: bytes | str, kind: str = "raw", mime: str = "text/plain", parents: list[str] | None = None
+        self,
+        data: bytes | str,
+        kind: str = "raw",
+        mime: str = "text/plain",
+        parents: list[str] | None = None,
     ) -> str:
         data_bytes = data.encode("utf-8") if isinstance(data, str) else data
         return self.store.put_raw(data_bytes, kind=kind, mime=mime, parents=parents)
@@ -182,6 +276,7 @@ class RlmKernel:
         self._subcall_count += 1
         if self._subcall_count > 20:
             import sys
+
             print(
                 f"Warning: subcall count {self._subcall_count} exceeds soft limit 20",
                 file=sys.stderr,
@@ -196,9 +291,10 @@ class RlmKernel:
 
     async def _amap_helper(self, prompts: list[str]) -> list[str]:
         """C4.T02: Map step uses bounded asyncio.gather; merge order equals source chunk order"""
+
         async def _limited_query(p: str) -> str:
             async with self._parallel_sem:
                 return await self._llm_query_helper(p)
-        
+
         tasks = [asyncio.create_task(_limited_query(p)) for p in prompts]
         return list(await asyncio.gather(*tasks))
