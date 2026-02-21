@@ -3,10 +3,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, cast
 
 from pirml.artifacts.errors import ArtifactPathError
@@ -74,12 +72,14 @@ class RlmKernel:
         self.emit_pi_pointers = emit_pi_pointers
         self.history = RlmHistory()
         self.view_vm = ViewMaterializer(store)
-        self._subcall_count = 0
-        self._parallel_sem = asyncio.Semaphore(self.budget["max_parallel"])
+        self.subcall_count = 0
+        self.parallel_sem = asyncio.Semaphore(self.budget["max_parallel"])
 
     async def run(self, prompt: str) -> Any:
         import time
 
+        self.history = RlmHistory()
+        self.subcall_count = 0
         start_time = time.monotonic()
         state = RlmState(P=prompt)
 
@@ -87,7 +87,7 @@ class RlmKernel:
         helpers = {
             "get": self._get_helper,
             "put": self._put_helper,
-            "llm_query": self._llm_query_helper,
+            "llm_query": self.llm_query_helper,
             "amap": self._amap_helper,
             "chunk_views": chunk_views,
             "pack_batches": pack_batches,
@@ -103,7 +103,9 @@ class RlmKernel:
                 )
 
             # 1. Root LM generates code
-            full_prompt = self.build_prompt(state)
+            from .governor import build_rlm_prompt
+
+            full_prompt = build_rlm_prompt(state, self.history, self.emit_pi_pointers)
             code = await asyncio.to_thread(self.model.compile_once, full_prompt)
 
             # 2. REPL exec
@@ -123,37 +125,28 @@ class RlmKernel:
                 # C5.T05/T06: Project final and pack citations
                 from .governor import create_citation_map
 
-                citations = create_citation_map([], str(state.Final))
+                ts_now = self.clock.now()
+                citations = create_citation_map([], str(state.Final), ts=ts_now)
 
-                # C5.T07: Emit web_output.json (Optional, if store has a base path)
-                if hasattr(self.store.layout, "root"):
-                    out_path = Path(self.store.layout.root) / "web_output.json"
-                    # S32: Project final under root {ok,results,output?,meta?}
-                    web_out: dict[str, Any] = {
-                        "ok": True,
-                        "results": [],  # Supervisor fills this in runtime, but placeholder for now
-                        "output": {
-                            "answer": str(state.Final),
-                            "citations": citations,
+                # C5.T07, I10: Emit web_output.json
+                from .project import project_web_output
+
+                out_path = project_web_output(self, str(state.Final), citations)
+
+                # C6.T01: Emit pi CustomEntry pointer row
+                if self.emit_pi_pointers and out_path:
+                    from pirml.runtime.rpc import send_custom
+
+                    # Collect roots from DOCS/CHUNKS/SUMS
+                    roots = list(set(state.DOCS + state.CHUNKS + state.SUMS))
+                    send_custom(
+                        "pirml",
+                        {
+                            "trace": str(self.store.layout.trace_path),
+                            "final": str(out_path),
+                            "roots": roots,
                         },
-                        "meta": {"iters": iters + 1, "subcalls": self._subcall_count},
-                    }
-                    out_path.write_text(json.dumps(web_out, indent=2))
-
-                    # C6.T01: Emit pi CustomEntry pointer row
-                    if self.emit_pi_pointers:
-                        from pirml.runtime.rpc import send_custom
-
-                        # Collect roots from DOCS/CHUNKS/SUMS
-                        roots = list(set(state.DOCS + state.CHUNKS + state.SUMS))
-                        send_custom(
-                            "pirml",
-                            {
-                                "trace": str(self.store.layout.trace_path),
-                                "final": str(out_path),
-                                "roots": roots,
-                            },
-                        )
+                    )
 
                 return state.Final
 
@@ -163,95 +156,6 @@ class RlmKernel:
             error_type=RlmErrorType.MAX_ITERS_REACHED,
             msg=f"Max iterations ({self.budget['max_iters']}) reached without Final set",
         )
-
-    def build_prompt(self, state: RlmState) -> str:
-        # C5.T02/T04: Context Governor with bulk off-ctx
-        from .governor import K_CAP_TOKENS, apply_cohesion_rule, est_tokens, pack_ctx
-
-        items: list[dict[str, Any]] = []
-        # Variables
-        s_dict = state.to_dict()
-        for k, v in cast(Mapping[str, Any], s_dict).items():
-            critical = k == "P"
-            if isinstance(v, list) and k in ("DOCS", "CHUNKS", "SUMS", "BUF"):
-                v_list = cast(list[Any], v)
-                # S34: Handle-only ctx pack / excerpt
-                items.append(
-                    {
-                        "id": f"var:{k}",
-                        "text": f"BulkVar {k}: list (len={len(v_list)})",  # Meta only
-                        "kind": "var",
-                        "critical": critical,
-                    }
-                )
-                # Add excerpts separately as candidates
-                for i, x in enumerate(v_list[:50]):
-                    items.append(
-                        {
-                            "id": f"var:{k}:{i}",
-                            "text": f"{k}[{i}]: {str(x)[:240]}",  # S34 excerpt cap
-                            "kind": "excerpt",
-                            "critical": False,
-                        }
-                    )
-            else:
-                v_any: Any = v  # type: ignore[reportUnknownVariableType]
-                items.append(
-                    {"id": f"var:{k}", "text": str(v_any), "kind": "var", "critical": critical}
-                )
-
-        # History
-        for f in self.history:
-            # C6.T03: Hard-block ctx contamination
-            if f["ev"] == "custom":
-                continue
-
-            items.append(
-                {
-                    "id": f"history:{f['seq']}",
-                    "text": f"Hist {f['seq']} ({f['ev']}): {f['prefix']}... (len={f['len']})",
-                    "kind": "history",
-                    "ev": f["ev"],
-                }
-            )
-
-        # Pack under budget
-        packed_ids = pack_ctx(state.P, items, k_limit=K_CAP_TOKENS)
-        # Apply cohesion (ensure call/result pairs stay if applicable, though here mostly logs)
-        final_ids = apply_cohesion_rule(packed_ids, items)
-
-        final_ids_set = set(final_ids)
-        parts = [f"Goal: {state.P}"]
-
-        vars_block: list[str] = []
-        hist_block: list[str] = []
-        for it in items:
-            if it["id"] in final_ids_set:
-                if it["kind"] == "var":
-                    vars_block.append(it["text"])
-                else:
-                    hist_block.append(it["text"])
-
-        if vars_block:
-            parts.append("Variables:\n" + "\n".join(vars_block))
-        if hist_block:
-            parts.append("History:\n" + "\n".join(hist_block))
-
-        if self.emit_pi_pointers:
-            from pirml.runtime.rpc import send_custom
-
-            tokens_before = sum(est_tokens(it["text"]) for it in items)
-            first_kept = final_ids[0] if final_ids else None
-            send_custom(
-                "pirml_summary",
-                {
-                    "summary": f"Context packed: {len(final_ids)}/{len(items)} items kept",
-                    "firstKeptEntryId": first_kept,
-                    "tokensBefore": tokens_before,
-                },
-            )
-
-        return "\n\n".join(parts)
 
     async def _repl_exec(self, state: RlmState, code: str, helpers: dict[str, Any]) -> str:
         # C3.T07: Enforce channel split
@@ -264,12 +168,16 @@ class RlmKernel:
                 # or use a more sophisticated approach.
                 # For C4, we want top-level await support in the generated code.
                 if "await " in code:
-                    wrap_code = "async def __rlm_exec_wrap():\n" + "\n".join(
-                        f"    {line}" for line in code.splitlines()
+                    # S31: Propagate state assignments from async wrapper
+                    state_keys = ["Final", "DOCS", "CHUNKS", "SUMS", "BUF"]
+                    globals_decl = "    global " + ", ".join(state_keys) + "\n"
+                    wrap_code = (
+                        "async def __rlm_exec_wrap():\n"
+                        + globals_decl
+                        + "\n".join(f"    {line}" for line in code.splitlines())
                     )
-                    locs: dict[str, Any] = {}
-                    exec(wrap_code, globs, locs)
-                    await locs["__rlm_exec_wrap"]()
+                    exec(wrap_code, globs)
+                    await globs["__rlm_exec_wrap"]()
                 else:
                     exec(code, globs)
                 state.update(globs)
@@ -283,16 +191,21 @@ class RlmKernel:
         return stdout.getvalue()
 
     def _get_helper(self, aid_vid: str, spec: SliceSpec | None = None) -> str:
+        # G08: Strip prefixes before calling store
+        clean_id = aid_vid
+        if aid_vid.startswith(("cas_", "vid_")):
+            clean_id = aid_vid[4:]
+
         try:
             if spec:
-                vid = self.view_vm.materialize(aid_vid, spec)
+                vid = self.view_vm.materialize(clean_id, spec)
                 return self.store.get_view_text(vid)
             else:
-                kind = self.store.index.get_kind(aid_vid)
+                kind = self.store.index.get_kind(clean_id)
                 if kind == "slice":
-                    return self.store.get_view_text(aid_vid)
+                    return self.store.get_view_text(clean_id)
                 elif kind:
-                    return self.store.get_bytes(aid_vid).decode("utf-8", errors="replace")
+                    return self.store.get_bytes(clean_id).decode("utf-8", errors="replace")
                 else:
                     raise RlmKernelError(
                         error_type=RlmErrorType.INVALID_ARGS, msg=f"Not found: {aid_vid}"
@@ -309,21 +222,28 @@ class RlmKernel:
         mime: str = "text/plain",
         parents: list[str] | None = None,
     ) -> str:
-        data_bytes = data.encode("utf-8") if isinstance(data, str) else data
-        return self.store.put_raw(data_bytes, kind=kind, mime=mime, parents=parents)
+        # G08: Strip prefixes from parents if they exist
+        clean_parents = None
+        if parents:
+            clean_parents = [p[4:] if p.startswith(("cas_", "vid_")) else p for p in parents]
 
-    async def _llm_query_helper(self, prompt: str) -> str:
+        data_bytes = data.encode("utf-8") if isinstance(data, str) else data
+        aid = self.store.put_raw(data_bytes, kind=kind, mime=mime, parents=clean_parents)
+        # G08: Return with cas_ prefix for citation mapping
+        return f"cas_{aid}"
+
+    async def llm_query_helper(self, prompt: str) -> str:
         # C3.T06: Budget guards
-        self._subcall_count += 1
-        if self._subcall_count > 20:
+        self.subcall_count += 1
+        if self.subcall_count > 20:
             import sys
 
             print(
-                f"Warning: subcall count {self._subcall_count} exceeds soft limit 20",
+                f"Warning: subcall count {self.subcall_count} exceeds soft limit 20",
                 file=sys.stderr,
             )
 
-        if self._subcall_count > self.budget["max_subcalls"]:
+        if self.subcall_count > self.budget["max_subcalls"]:
             raise RlmKernelError(
                 error_type=RlmErrorType.BUDGET_EXCEEDED,
                 msg=f"Max subcalls ({self.budget['max_subcalls']}) exceeded",
@@ -332,10 +252,6 @@ class RlmKernel:
 
     async def _amap_helper(self, prompts: list[str]) -> list[str]:
         """C4.T02: Map step uses bounded asyncio.gather; merge order equals source chunk order"""
+        from .recursion import amap_recursive
 
-        async def _limited_query(p: str) -> str:
-            async with self._parallel_sem:
-                return await self._llm_query_helper(p)
-
-        tasks = [asyncio.create_task(_limited_query(p)) for p in prompts]
-        return list(await asyncio.gather(*tasks))
+        return await amap_recursive(self, prompts)

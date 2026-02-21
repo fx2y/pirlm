@@ -448,6 +448,23 @@ def validate_view_row(row: Any, index: int) -> list[str]:
         return [f"{path} must be an object"]
     errors: list[str] = []
 
+    allowed = {
+        "text",
+        "line",
+        "offset",
+        "score",
+        "chunk_id",
+        "url",
+        "doc_sha256",
+        "source_rank",
+        "doc_rank",
+        "kind",
+        "path_hint",
+    }
+    for key in cast(Mapping[str, Any], row):
+        if key not in allowed:
+            errors.append(f"{path} has unexpected field '{key}'")
+
     if "text" not in row:
         errors.append(f"{path} missing required 'text'")
     elif not isinstance(row["text"], str):
@@ -567,11 +584,16 @@ def validate_artifact_row(row: Any, index: int) -> list[str]:
     errors: list[str] = []
     # ArtifactRecord: {id, kind, mime, bytes, sha256, path, parents, src, ts, notes?}
     required = {"id", "kind", "mime", "bytes", "sha256", "path", "parents", "src", "ts"}
+    allowed = required | {"notes"}
     for req in required:
         if req not in row:
             errors.append(f"{path} missing required '{req}'")
+    for key in cast(Mapping[str, Any], row):
+        if key not in allowed:
+            errors.append(f"{path} has unexpected field '{key}'")
     if "id" in row and not isinstance(row["id"], str):
         errors.append(f"{path}.id must be a string")
+
     if "kind" in row and not isinstance(row["kind"], str):
         errors.append(f"{path}.kind must be a string")
     if "mime" in row and not isinstance(row["mime"], str):
@@ -603,11 +625,29 @@ def validate_artifact_trace_row(row: Any, index: int) -> list[str]:
     errors: list[str] = []
     # Trace frame: {id, seq, ts, ev, aid?}
     required = {"id", "seq", "ts", "ev"}
+    allowed = required | {
+        "aid",
+        "kind",
+        "mime",
+        "bytes",
+        "sha256",
+        "path",
+        "parents",
+        "src",
+        "notes",
+        "vid",
+        "spec",
+        "stats",
+    }
     for req in required:
         if req not in row:
             errors.append(f"{path} missing required '{req}'")
+    for key in cast(Mapping[str, Any], row):
+        if key not in allowed:
+            errors.append(f"{path} has unexpected field '{key}'")
     if "id" in row and not isinstance(row["id"], str):
         errors.append(f"{path}.id must be a string")
+
     if "seq" in row and not _is_int(row["seq"]):
         errors.append(f"{path}.seq must be an integer")
     if "ts" in row and not _is_int(row["ts"]):

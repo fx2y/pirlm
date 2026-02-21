@@ -9,7 +9,7 @@ Model: `L0` runtime/replay substrate (frozen), `L1` compiler+web/toolsearch laye
 - `H1` Authority is `mise run ci`; `mise run fast` is `<3s` reject-signal only.
 - `H2` Gate order fixed fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
 - `H3` Determinism defaults mandatory: env pins, canonical JSON, sequence clock, total-order IDs/fields/results/errors.
-- `H4` Protocol algebra closed: `op in {call,result,final}`; exactly one `final`; `final` last.
+- `H4` Protocol algebra closed: `op in {call,result,final,custom}`; exactly one `final`; `final` last.
 - `H5` Envelope law: `id=c%05d` monotonic unique per run; `seq` strict `+1`; deterministic field order.
 - `H6` Byte law: hash emitted/stored bytes only; boundary cap at writer; only `result` may truncate (`truncated,truncated_bytes`); rehash post-truncation.
 - `H7` Tool surface frozen (`{echo,readfile,bash}`); replay runs zero tools (`PIRML_BLOCK_TOOLS=1`).

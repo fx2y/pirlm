@@ -77,7 +77,9 @@ class TestSpec06C6Pointers(unittest.IsolatedAsyncioTestCase):
             ev="custom", prefix="SHOULD_NOT_SEE_THIS", full_len=20, ts=123, data={"foo": "bar"}
         )
 
-        prompt = kernel.build_prompt(RlmState(P="goal"))
+        from pirml.rlm.governor import build_rlm_prompt
+
+        prompt = build_rlm_prompt(RlmState(P="goal"), kernel.history, kernel.emit_pi_pointers)
         self.assertNotIn("SHOULD_NOT_SEE_THIS", prompt)
         self.assertNotIn("custom", prompt.lower())
 
@@ -85,9 +87,11 @@ class TestSpec06C6Pointers(unittest.IsolatedAsyncioTestCase):
         """C6.T02: Summary row contains expected keys"""
         kernel = RlmKernel(self.store, self.model, emit_pi_pointers=True)
 
+        from pirml.rlm.governor import build_rlm_prompt
+
         f = io.StringIO()
         with contextlib.redirect_stdout(f):
-            kernel.build_prompt(RlmState(P="goal"))
+            build_rlm_prompt(RlmState(P="goal"), kernel.history, kernel.emit_pi_pointers)
 
         output = f.getvalue()
         rows = [json.loads(line) for line in output.splitlines() if line.strip()]

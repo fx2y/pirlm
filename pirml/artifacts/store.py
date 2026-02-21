@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from .errors import ArtifactErrorType, ArtifactPathError, artifact_error
@@ -146,6 +147,81 @@ class ArtifactStore:
         )
         return vid
 
+    def put_view_stream(
+        self,
+        vid: str,
+        aid: str,
+        spec: Any,
+        rows: Iterator[dict[str, Any]],
+    ) -> str:
+        """G09: Streaming version of put_view for memory efficiency (10MB+)."""
+        path = self._layout.views_dir / f"{vid}.ndjson"
+        import hashlib
+        import os
+        import tempfile
+
+        self._layout.views_dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=str(self._layout.views_dir))
+
+        total_chars = 0
+        total_lines = 0
+        total_bytes = 0
+        hasher = hashlib.sha256()
+
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for row in rows:
+                    # S.RPC1: Canon dump
+                    line = (json.dumps(row, separators=(",", ":"), sort_keys=True) + "\n").encode(
+                        "utf-8"
+                    )
+                    f.write(line)
+                    hasher.update(line)
+                    total_bytes += len(line)
+                    total_chars += len(str(row.get("text", "")))
+                    total_lines += 1
+            os.replace(tmp, path)
+        except Exception:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
+
+        view_sha = hasher.hexdigest()
+        stats = {
+            "chars": total_chars,
+            "lines": total_lines,
+            "sha256": view_sha,
+        }
+
+        ts = self._trace.clock.now()
+        rel_path = str(path.relative_to(self._layout.root))
+
+        rec: ArtifactRecord = {
+            "id": vid,
+            "kind": "slice",
+            "mime": "application/x-ndjson",
+            "bytes": total_bytes,
+            "sha256": view_sha,
+            "path": rel_path,
+            "parents": [aid],
+            "src": {"vid": vid, "aid": aid, "spec": spec, "stats": stats},
+            "ts": ts,
+            "notes": f"View {vid} for {aid}",
+        }
+        self._index.put(rec)
+
+        self._trace.append(
+            ev="view",
+            aid=aid,
+            vid=vid,
+            spec=spec,
+            stats=stats,
+            sha256=view_sha,
+            path=rel_path,
+            ts=ts,
+        )
+        return vid
+
     def get_bytes(self, aid: str) -> bytes:
         """C1.T06: Retrieve artifact bytes by id"""
         path_str = self._index.get_path(aid)
@@ -182,13 +258,16 @@ class ArtifactStore:
         abs_path = self._layout.root / path_str
         texts: list[str] = []
         with abs_path.open("r", encoding="utf-8") as f:
-            for line in f:
+            for i, line in enumerate(f, start=1):
                 if line.strip():
                     try:
                         row = json.loads(line)
                         texts.append(row.get("text", ""))
-                    except json.JSONDecodeError:
-                        continue
+                    except json.JSONDecodeError as exc:
+                        raise ArtifactPathError(
+                            error_type=ArtifactErrorType.INTEGRITY,
+                            msg=f"Malformed JSON in view {vid} line {i}: {exc}",
+                        ) from exc
         return "\n".join(texts)
 
     def rebuild_index(self) -> None:

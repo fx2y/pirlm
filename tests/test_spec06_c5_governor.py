@@ -90,7 +90,9 @@ class TestKernelGovernor(unittest.IsolatedAsyncioTestCase):
         state = RlmState(P="test")
         state.BUF = ["data" * 1000] * 100  # Huge bulk
 
-        prompt = kernel.build_prompt(state)
+        from pirml.rlm.governor import build_rlm_prompt
+
+        prompt = build_rlm_prompt(state, kernel.history, kernel.emit_pi_pointers)
         # Verify prompt doesn't contain the full data 100 times
         self.assertLess(len(prompt), 50000)
         self.assertIn("BulkVar BUF", prompt)
@@ -99,7 +101,7 @@ class TestKernelGovernor(unittest.IsolatedAsyncioTestCase):
         self.assertLess(prompt.count("data" * 1000), 1)
 
     async def test_web_output_projection(self) -> None:
-        # C5.T05, T07
+        # C5.T05, T07, G07
         class SimpleModel(ModelAdapter):
             def compile_once(self, prompt: str) -> str:
                 return "Final = 'answer'"
@@ -112,9 +114,39 @@ class TestKernelGovernor(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(out_file.exists())
         with open(out_file) as f:
             data = json.load(f)
-            self.assertEqual(data["output"]["answer"], "answer")
-            self.assertIn("citations", data["output"])
-            self.assertTrue(data["ok"])
+            self.assertEqual(data["answer"], "answer")
+            self.assertIn("citations", data)
+            self.assertIn("trace_ptr", data)
+
+    def test_governor_hard_cap_enforcement(self) -> None:
+        # 06.G05: Hard cap must hold even after cohesion
+        items = [
+            {"id": "c1", "text": "A" * 3000, "ev": "call"},
+            {"id": "r1", "text": "B" * 3000, "ev": "result"},
+            {"id": "c2", "text": "C" * 3000, "ev": "call"},
+            {"id": "r2", "text": "D" * 3000, "ev": "result"},
+        ]
+        # Total cost is ~4000 tokens (1000 per 3000 chars)
+        # Budget = 2500 tokens
+        # Scenario: r1 and r2 are selected (2000 tokens)
+        # Cohesion adds c1 and c2 (total 4000 tokens) -> MUST drop to fit in 2500
+        final = apply_cohesion_rule(["r1", "r2"], items, k_limit=2500)
+
+        from pirml.rlm.governor import est_tokens
+
+        total_cost = sum(est_tokens(it["text"]) for it in items if it["id"] in final)
+        self.assertLessEqual(total_cost, 2500)
+        self.assertGreater(len(final), 0)
+
+    def test_critical_p_retention(self) -> None:
+        # 06.G05: Mandatory 'P' retention
+        items = [
+            {"id": "p", "text": "Goal: solve it", "critical": True},
+            {"id": "huge", "text": "X" * 30000},  # Exceeds budget alone
+        ]
+        packed = pack_ctx("", items, k_limit=1000)
+        self.assertIn("p", packed)
+        self.assertNotIn("huge", packed)
 
 
 if __name__ == "__main__":

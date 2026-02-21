@@ -12,7 +12,7 @@ paths:
 
 - `R0` Plane split is absolute: `L0` runtime/replay contracts frozen; `L1` compiler/web/search additive only.
 - `R1` Channel split strict: stdout carries NDJSON protocol only; stderr/artifacts carry diagnostics only.
-- `R2` Algebra closed: `op in {call,result,final}` only; unknown op/order/cardinality => integrity failure.
+- `R2` Algebra closed: `op in {call,result,final,custom}` only; unknown op/order/cardinality => integrity failure.
 - `R3` Terminal law: exactly one `final`, emitted last; every `result.id` must reference earlier `call.id`.
 - `R4` Envelope law: `id=^c[0-9]{5}$` monotonic unique per run; `seq` starts `1` and increments `+1`; field order deterministic.
 - `R5` Byte-hash law: hash emitted/stored bytes only (post-serialize, post-truncate, post-normalize); never hash pre-transform text surrogates.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from typing import Any, Literal, NotRequired, TypedDict
 
+from pirml.artifacts.errors import ArtifactErrorType, ArtifactPathError
 from pirml.runtime.rpc import canonical_json
 
 
@@ -56,15 +57,24 @@ def parse_spec(spec: dict[str, Any]) -> SliceSpec:
     """I06: Validate and typed-fail on invalid slice spec"""
     op = spec.get("op")
     if op not in ("lines", "bytes", "regex", "html_text"):
-        raise ValueError(f"Unknown view op: {op}")
+        raise ArtifactPathError(
+            error_type=ArtifactErrorType.VIEW_OP_UNSUPPORTED,
+            msg=f"Unknown view op: {op}",
+        )
 
     if op == "lines":
         a, b = spec.get("a"), spec.get("b")
         if not isinstance(a, int) or not isinstance(b, int) or a < 0 or b < a:
-            raise ValueError(f"Invalid span [a, b] for lines: {a}, {b}")
+            raise ArtifactPathError(
+                error_type=ArtifactErrorType.VIEW_SPEC_INVALID,
+                msg=f"Invalid span [a, b] for lines: {a}, {b}",
+            )
     elif op == "bytes":
         offset, limit = spec.get("offset"), spec.get("limit")
         if not isinstance(offset, int) or not isinstance(limit, int) or offset < 0 or limit < 0:
-            raise ValueError(f"Invalid offset/limit for bytes: {offset}, {limit}")
+            raise ArtifactPathError(
+                error_type=ArtifactErrorType.VIEW_SPEC_INVALID,
+                msg=f"Invalid offset/limit for bytes: {offset}, {limit}",
+            )
 
     return spec  # type: ignore

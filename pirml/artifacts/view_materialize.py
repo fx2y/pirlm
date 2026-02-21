@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Iterator
 from html.parser import HTMLParser
@@ -8,7 +7,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from pirml.artifacts.errors import ArtifactErrorType, ArtifactPathError
-from pirml.artifacts.io import canonical_json
 from pirml.artifacts.store import ArtifactStore
 from pirml.artifacts.view_dsl import SliceSpec, ViewOpSpec, view_id_for
 
@@ -32,12 +30,6 @@ class HtmlToText(HTMLParser):
             d = data.strip()
             if d:
                 self.out.append(d)
-
-
-def html_text(html: str) -> str:
-    p = HtmlToText()
-    p.feed(html)
-    return "\n".join(p.out)
 
 
 class ViewMaterializer:
@@ -79,31 +71,15 @@ class ViewMaterializer:
         # C2.T07: Integrate ETL ops (post-process)
         post_ops = spec.get("post", [])
         if post_ops:
+            # Post ops currently require full list (select_top, join, etc)
+            # This is the memory bottleneck for large results, but okay for typical slices.
             rows_list = list(rows)
             for pop in post_ops:
                 rows_list = self._apply_post_op(rows_list, pop)
             rows = iter(rows_list)
 
-        # Materialize rows and collect stats
-        total_chars = 0
-        total_lines = 0
-        output_buffer: list[bytes] = []
-
-        for row in rows:
-            line_json = canonical_json(row) + "\n"
-            output_buffer.append(line_json.encode("utf-8"))
-            total_chars += len(row.get("text", ""))
-            total_lines += 1
-
-        data = b"".join(output_buffer)
-        stats = {
-            "chars": total_chars,
-            "lines": total_lines,
-            "sha256": hashlib.sha256(data).hexdigest(),
-        }
-
-        # C2.T06: Link to ArtifactFS index + trace
-        self._store.put_view(vid, aid, spec, data, stats)
+        # G09: Streaming materialization via ArtifactStore.put_view_stream
+        self._store.put_view_stream(vid, aid, spec, rows)
 
         return vid
 
@@ -140,10 +116,16 @@ class ViewMaterializer:
             }
 
     def _slice_html_text(self, path: Path) -> Iterator[dict[str, Any]]:
-        # C2.T03: Implement stdlib html_text op
-        html = path.read_text(encoding="utf-8", errors="replace")
-        text = html_text(html)
-        for i, line in enumerate(text.splitlines()):
+        # G09: Stream HTML text extraction
+        p = HtmlToText()
+        with path.open("r", encoding="utf-8", errors="replace") as f:
+            while True:
+                chunk = f.read(16384)
+                if not chunk:
+                    break
+                p.feed(chunk)
+
+        for i, line in enumerate(p.out):
             line = line.strip()
             if line:
                 yield {"line": i, "text": line}

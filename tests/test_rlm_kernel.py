@@ -71,13 +71,16 @@ class TestRlmKernel(unittest.IsolatedAsyncioTestCase):
         aid = self.store.put_raw(content.encode("utf-8"), kind="raw", mime="text/plain")
 
         # Code that gets an artifact, modifies it, and puts it back
-        code = f'text = get("{aid}"); Final = put(text.upper(), kind="final")'
+        # G08: helpers now handle cas_ prefix
+        code = f'text = get("cas_{aid}"); Final = put(text.upper(), kind="final")'
         model = StubModelAdapter(code)
 
         res_aid = await run_rlm("test", self.store, model)
-        self.assertEqual(len(res_aid), 64)
+        self.assertEqual(len(res_aid), 68)  # cas_ + 64 hex
+        self.assertTrue(res_aid.startswith("cas_"))
 
-        res_content = self.store.get_bytes(res_aid).decode("utf-8")
+        clean_aid = res_aid[4:]
+        res_content = self.store.get_bytes(clean_aid).decode("utf-8")
         self.assertEqual(res_content, "HELLO WORLD")
 
     async def test_rlm_state_vars(self) -> None:
@@ -101,3 +104,41 @@ class TestRlmKernel(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RlmKernelError) as cm:
             await run_rlm("test", self.store, model, budget)
         self.assertEqual(cm.exception.error["type"], RlmErrorType.INTEGRITY)
+
+    async def test_rlm_state_bleed(self) -> None:
+        # 06.G04: Reset history and subcall_count per run
+        model = StubModelAdapter('await llm_query("ping"); Final = "ok"')
+        kernel = RlmKernel(self.store, model)
+
+        await kernel.run("run 1")
+        self.assertEqual(len(kernel.history), 1)
+        self.assertEqual(kernel.subcall_count, 1)
+
+        await kernel.run("run 2")
+        self.assertEqual(len(kernel.history), 1)  # Should NOT be 2
+        self.assertEqual(kernel.subcall_count, 1)  # Should NOT be 2
+
+    async def test_rlm_determinism_clock(self) -> None:
+        # 06.G06: SequenceClock used for timestamps
+        from pirml.clock import SequenceClock
+
+        clock = SequenceClock(start=1000)
+        # 64 char hex
+        fake_id = "a" * 64
+        model = StubModelAdapter(f'Final = "cas_{fake_id}"')
+        kernel = RlmKernel(self.store, model, clock=clock)
+
+        await kernel.run("test")
+
+        # Check web_output.json timestamp
+        out_file = self.tmp_dir / "web_output.json"
+        import json
+
+        with open(out_file) as f:
+            data = json.load(f)
+            # History log: ts=clock.now() (1000)
+            # Final: ts_now = clock.now() (1001)
+            # Citations should use 1001
+            self.assertTrue(len(data["citations"]) > 0, f"Expected citations in {data}")
+            self.assertEqual(data["citations"][0]["retrieved_at"], 1001)
+            self.assertEqual(data["citations"][0]["doc_sha256"], fake_id)
