@@ -5,7 +5,6 @@ import unittest
 
 
 class Spec06C0DeclaredFailures(unittest.TestCase):
-    @unittest.expectedFailure
     def test_c1_cas_immutability_suite_declared(self) -> None:
         importlib.import_module("pirml.artifacts.store")
 

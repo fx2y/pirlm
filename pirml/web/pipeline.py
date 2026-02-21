@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pirml.artifacts import ArtifactKind, ArtifactStore
 from pirml.clock import SequenceClock
 
 from .cite import pack_citations
@@ -46,12 +47,14 @@ class WebPipeline:
         clock: SequenceClock,
         tracer: WebTracer | None = None,
         trace_dir: Path = Path("out"),
+        artifact_store: ArtifactStore | None = None,
     ):
         self.provider = provider
         self.fetcher = fetcher
         self.clock = clock
         self.tracer = tracer
         self.trace_dir = trace_dir
+        self.artifact_store = artifact_store
 
     async def run(self, query: str, plan: WebPlan, trace_filename: str | None = None) -> WebFinal:
         # 1. Search
@@ -87,11 +90,22 @@ class WebPipeline:
                     doc = await self.fetcher.fetch(row_url, tracer=self.tracer)
                 if doc["status"] != 200:
                     return []
+
+                # C1.T08: Ingress integration
+                doc_sha256 = doc["body_sha256"]
+                if self.artifact_store:
+                    self.artifact_store.put_raw(
+                        doc["body"].encode("utf-8"),
+                        kind=ArtifactKind.RAW,
+                        mime=doc["content_type"],
+                        src={"url": doc["url"]},
+                    )
+
                 # Winner B3b: robust text extraction
                 return fallback_extract(
                     doc["body"],
                     url=doc["url"],
-                    doc_sha256=doc["body_sha256"],
+                    doc_sha256=doc_sha256,
                     source_rank=row["rank"],
                     doc_rank=i,
                 )

@@ -535,6 +535,65 @@ def _validate_row_artifacts(
     return exit_code
 
 
+def validate_artifact_row(row: Any, index: int) -> list[str]:
+    path = f"rows[{index}]"
+    if not isinstance(row, dict):
+        return [f"{path} must be an object"]
+    errors: list[str] = []
+    # ArtifactRecord: {id, kind, mime, bytes, sha256, path, parents, src, ts, notes?}
+    required = {"id", "kind", "mime", "bytes", "sha256", "path", "parents", "src", "ts"}
+    for req in required:
+        if req not in row:
+            errors.append(f"{path} missing required '{req}'")
+    if "id" in row and not isinstance(row["id"], str):
+        errors.append(f"{path}.id must be a string")
+    if "kind" in row and not isinstance(row["kind"], str):
+        errors.append(f"{path}.kind must be a string")
+    if "mime" in row and not isinstance(row["mime"], str):
+        errors.append(f"{path}.mime must be a string")
+    if "bytes" in row and not _is_int(row["bytes"]):
+        errors.append(f"{path}.bytes must be an integer")
+    if "sha256" in row and not _has_sha256(row["sha256"]):
+        errors.append(f"{path}.sha256 must be a 64-char lower-hex digest")
+    if "path" in row and not isinstance(row["path"], str):
+        errors.append(f"{path}.path must be a string")
+    if "parents" in row:
+        if not isinstance(row["parents"], list):
+            errors.append(f"{path}.parents must be a list")
+        else:
+            for i, p in enumerate(cast(list[Any], row["parents"])):
+                if not isinstance(p, str):
+                    errors.append(f"{path}.parents[{i}] must be a string")
+    if "src" in row and not isinstance(row["src"], dict):
+        errors.append(f"{path}.src must be an object")
+    if "ts" in row and not _is_int(row["ts"]):
+        errors.append(f"{path}.ts must be an integer")
+    return errors
+
+
+def validate_artifact_trace_row(row: Any, index: int) -> list[str]:
+    path = f"rows[{index}]"
+    if not isinstance(row, dict):
+        return [f"{path} must be an object"]
+    errors: list[str] = []
+    # Trace frame: {id, seq, ts, ev, aid?}
+    required = {"id", "seq", "ts", "ev"}
+    for req in required:
+        if req not in row:
+            errors.append(f"{path} missing required '{req}'")
+    if "id" in row and not isinstance(row["id"], str):
+        errors.append(f"{path}.id must be a string")
+    if "seq" in row and not _is_int(row["seq"]):
+        errors.append(f"{path}.seq must be an integer")
+    if "ts" in row and not _is_int(row["ts"]):
+        errors.append(f"{path}.ts must be an integer")
+    if "ev" in row and not isinstance(row["ev"], str):
+        errors.append(f"{path}.ev must be a string")
+    if "aid" in row and not isinstance(row["aid"], str):
+        errors.append(f"{path}.aid must be a string")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="PIRML Schema Linter")
 
@@ -565,6 +624,12 @@ def main() -> int:
         "--web-trace", action="append", type=Path, help="Path(s) to web trace artifacts"
     )
     parser.add_argument("--web-output", type=Path, help="Path to web output artifact")
+    parser.add_argument(
+        "--artifact", action="append", type=Path, help="Path(s) to artifact metadata artifacts"
+    )
+    parser.add_argument(
+        "--artifact-trace", action="append", type=Path, help="Path(s) to artifact trace artifacts"
+    )
 
     args = parser.parse_args()
     if not any(
@@ -579,13 +644,15 @@ def main() -> int:
             args.web_eval,
             args.web_trace,
             args.web_output,
+            args.artifact,
+            args.artifact_trace,
         )
     ):
         print(
             "Error: pass at least one artifact path "
             "("
             "--final/--contract/--compile-error/--serp/--doc/--extract/--citation/"
-            "--web-eval/--web-trace/--web-output"
+            "--web-eval/--web-trace/--web-output/--artifact/--artifact-trace"
             ")",
             file=sys.stderr,
         )
@@ -693,6 +760,22 @@ def main() -> int:
             paths=[args.web_output] if args.web_output else None,
             missing_label="web-output",
             validate=validate_web_output,
+        ),
+    )
+    exit_code = max(
+        exit_code,
+        _validate_row_artifacts(
+            paths=args.artifact,
+            missing_label="artifact",
+            validate_row=validate_artifact_row,
+        ),
+    )
+    exit_code = max(
+        exit_code,
+        _validate_row_artifacts(
+            paths=args.artifact_trace,
+            missing_label="artifact-trace",
+            validate_row=validate_artifact_trace_row,
         ),
     )
     if args.web_output and args.web_output.exists():
