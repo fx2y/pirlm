@@ -5,28 +5,31 @@ paths:
   - "scripts/proto_lint.py"
   - "scripts/trace_lint.py"
   - "scripts/schema_lint.py"
+  - "scripts/web_eval.py"
+  - "scripts/web_fixture_smoke.py"
 ---
 # Runtime + Protocol Rules (Normative)
 
-- `R0` Plane split is absolute: `L0` runtime/replay contracts are frozen; `L1` compiler/search is additive metadata.
-- `R1` Channel split is strict: stdout carries NDJSON protocol only; stderr carries diagnostics only.
-- `R2` Algebra is closed: `op in {call,result,final}` only; unknown op/order/cardinality => integrity failure.
-- `R3` Terminal law: exactly one `final`, emitted last; every `result.id` must reference an earlier `call.id`.
-- `R4` Identity/envelope law: `id=^c[0-9]{5}$` monotonic; `seq` starts at 1 and increments by 1; envelope fields are deterministic.
-- `R5` Hash law: `call.sha256_args` and `result|final.sha256_output` hash emitted bytes only (post-serialization, post-truncation).
-- `R6` Truncation law: writer-boundary cap (default `8192`); only `result` may truncate and must emit `truncated:true,truncated_bytes>=0`.
-- `R7` Redaction law: traced call-args redact sensitive keys (`token|password|secret|api[_]?key|authorization|auth*`) to deterministic `{redacted_sha256}`.
-- `R8` Artifact law: every run, including fatal, emits `trace.ndjson` and compact `final.json`; artifact loss is merge-blocking.
-- `R9` Replay law: input trace must pass strict validation (`op/order/id/envelope/hash`); replay runs with `PIRML_BLOCK_TOOLS=1`; call-ID drift hard-fails; final-hash parity required and stamped.
-- `R10` Final boundary law: `final.json` remains `{ok,results,output?,meta?}` only; raw transcripts/debug streams never cross boundary.
-- `R11` Selection determinism: same `(query,catalog,mode,k)` => same ordered refs via explicit total-order key; `k<=5`.
-- `R12` Selection hard-fail: all-deferred/empty usable catalog, duplicate/invalid manifests, or strict-shape drift are typed failures.
-- `R13` Compiler branch law: compile emits exactly one branch: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `R14` Extractor law: strict two-sentinel frame (`PROG`,`CONTRACT`) with fixed cardinality; leading/trailing prose is failure.
-- `R15` Contract law: schema-backed strict verification (required/additional/type); alias normalization happens before verify/hash/write.
-- `R16` AST law: fail-closed import/call structure; exactly one async `main`; exactly one `send_final`; stdout chatter forbidden.
-- `R17` Tool-call law: every `TOOL_*` call is awaited; called tool-set equals `contract.tool_deps` and is subset of selected top-k.
-- `R18` Parallelism law: independent fanout requires structural `asyncio.gather`; serial escape only with `SERIAL_OK in {dependency_chain,rate_limit,ordering_required}`.
-- `R19` Smoke law: deterministic harness enforces budgets (`max_calls,max_parallel,max_bytes_in,max_bytes_out,timeout_s`) and emits `smoke_trace.ndjson` on pass/fail/timeout.
-- `R20` Schema-stage law: schema checks use explicit artifact args only (`--final/--contract/--compile-error`); no implicit workspace scan.
-- `R21` Semantic-change law: any op/tool/replay/compile/search/gate change requires same-merge invariant delta + tests + lint/schema + docs + task/learnings sync.
+- `R0` Plane split is absolute: `L0` runtime/replay contracts frozen; `L1` compiler/web/search additive only.
+- `R1` Channel split strict: stdout carries NDJSON protocol only; stderr/artifacts carry diagnostics only.
+- `R2` Algebra closed: `op in {call,result,final}` only; unknown op/order/cardinality => integrity failure.
+- `R3` Terminal law: exactly one `final`, emitted last; every `result.id` must reference earlier `call.id`.
+- `R4` Envelope law: `id=^c[0-9]{5}$` monotonic unique per run; `seq` starts `1` and increments `+1`; field order deterministic.
+- `R5` Byte-hash law: hash emitted/stored bytes only (post-serialize, post-truncate, post-normalize); never hash pre-transform text surrogates.
+- `R6` Truncation law: boundary cap at writer (default `8192`); only `result` may truncate and must emit `truncated:true,truncated_bytes>=0`.
+- `R7` Redaction law: trace args redact sensitive keys (`token|password|secret|api[_]?key|authorization|auth*`) to deterministic `{redacted_sha256}`.
+- `R8` Artifact law: every run (incl fatal) emits `trace.ndjson` + compact `final.json`; declared pointers (e.g. trace_ptr) must resolve.
+- `R9` Replay law: strict trace validation (`op/order/id/envelope/hash`) before run; replay sets `PIRML_BLOCK_TOOLS=1`; ID drift or final-hash drift hard-fails.
+- `R10` Final boundary law: `final.json` shape stays `{ok,results,output?,meta?}` only; raw transcripts/html/debug never cross boundary.
+- `R11` Selection law: same `(query,catalog,mode,k)` => same ordered refs via explicit total-order key; duplicate/invalid/empty usable sets typed-fail.
+- `R12` Eval matrix law: run every declared plan; unsupported plan/config emits typed error row; silent skip is prohibited.
+- `R13` Config law: parser is strict+exhaustive; unknown variant/loser plan/reintroduced fallback => typed fail (never implicit downgrade).
+- `R14` Parallel law: independent fanout uses bounded `asyncio.gather`; merge order must equal deterministic source order.
+- `R15` State law: per-run mutable state must be run-scoped; cross-run globals for ranking/cache/boilerplate are defects.
+- `R16` Cache law: store canonical bytes; persisted sha/byte-count/rows must match stored bytes; read path normalizes before compare/use.
+- `R17` Error law: broad swallow (`except Exception: continue`) forbidden on boundary paths; convert to typed error + trace evidence.
+- `R18` Compiler branch law: exactly one branch: `{prog.py+contract.json}` xor `{compile_error.json}`.
+- `R19` Extractor+contract law: strict sentinels (`PROG`,`CONTRACT`), strict schema (required/additional/type), alias normalize before verify/hash/write.
+- `R20` AST/tool law: fail-closed import/call structure; one async `main`; one `send_final`; every `TOOL_*` awaited; tool-set exact to contract deps.
+- `R21` Smoke+schema law: deterministic smoke budgets required; schema stage validates explicit artifact args only (no implicit workspace scan).
+- `R22` Semantic-change law: any op/tool/replay/compile/search/gate change requires same-merge invariant delta + tests + lint/schema + docs + tasks/learnings.

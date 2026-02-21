@@ -30,8 +30,12 @@ def fallback_extract(
     if not doc_sha256:
         raise ValueError("doc_sha256 must be non-empty")
     # B3b fallback: strip tags + windowed regex
-    # Simplified: regex-based sentence/paragraph extraction
-    text = re.sub(r"<[^>]+>", " ", html)
+    # Improved: strip script/style tags AND their contents first
+    clean_html = re.sub(
+        r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.DOTALL | re.IGNORECASE
+    )
+    # Strip all other tags
+    text = re.sub(r"<[^>]+>", " ", clean_html)
     text = re.sub(r"\s+", " ", text).strip()
 
     # Split into ~400-800 char windows

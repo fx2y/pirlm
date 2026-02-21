@@ -705,18 +705,32 @@ def main() -> int:
             trace_ptr = payload_map.get("trace_ptr")
             if isinstance(trace_ptr, str):
                 ptr_path = Path(trace_ptr)
-                if not ptr_path.exists():
+                # Check absolute/cwd-relative first
+                exists = ptr_path.exists()
+                # If not, check relative to the web_output.json file (portable bundle)
+                if not exists:
+                    rel_ptr = args.web_output.parent / ptr_path.name
+                    if rel_ptr.exists():
+                        exists = True
+                        ptr_path = rel_ptr
+
+                if not exists:
                     print(
                         f"Error: web_output.trace_ptr target missing: {ptr_path}",
                         file=sys.stderr,
                     )
                     exit_code = 1
-                if args.web_trace and ptr_path not in args.web_trace:
-                    print(
-                        f"Error: web_output.trace_ptr {ptr_path} not listed in --web-trace args",
-                        file=sys.stderr,
-                    )
-                    exit_code = 1
+
+                if args.web_trace:
+                    # For portability, we allow the trace to be listed even if paths don't match exactly,
+                    # as long as the filename (which is unique) matches.
+                    trace_names = {p.name for p in args.web_trace}
+                    if ptr_path.name not in trace_names:
+                        print(
+                            f"Error: web_output.trace_ptr {ptr_path.name} not found in --web-trace args",
+                            file=sys.stderr,
+                        )
+                        exit_code = 1
 
     return exit_code
 

@@ -1,69 +1,72 @@
 # PIRML Constitution
 
-Mission: deterministic orchestration where `V<<G`, every run is replay-auditable, and handoff signal compounds.
+Mission: deterministic orchestration where `V<<G`; every run replay-auditable; handoff signal compounds.
 
-Model: `L0` runtime/replay substrate (frozen), `L1` compiler/toolsearch metadata (additive), `G` gate ladder (authoritative).
+Model: `L0` runtime/replay substrate (frozen), `L1` compiler+web/toolsearch layer (additive), `G` gate ladder (authoritative).
 
 ## Hard Laws
-- `H0` Policy root is this file; detail lives only in imported `.codex/rules/*`.
-- `H1` Authority: `mise run ci` only; `mise run fast` is <3s reject-signal, never release-proof.
-- `H2` Gate order is fixed fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
-- `H3` Determinism defaults are mandatory: env pins + canonical JSON + sequence clock + stable ordering/IDs.
-- `H4` Protocol algebra is closed: `op in {call,result,final}`; exactly one `final`; `final` is last.
-- `H5` ID/envelope law: `id=c%05d` monotonic unique per run; `seq` strict `+1`; deterministic field order.
-- `H6` Boundary-byte law: hash emitted bytes only; line-cap at writer; only `result` may truncate with `truncated,truncated_bytes`; rehash post-truncation.
-- `H7` Tool law (Sprint-1 frozen): `{echo,readfile,bash}` only; replay executes zero tools (`PIRML_BLOCK_TOOLS=1`).
-- `H8` Artifact law: every run (incl fatal) emits `trace.ndjson` + `final.json`; replay `final.json` hash parity is merge-blocking.
-- `H9` Channel split: stdout carries protocol only; diagnostics go to stderr/artifacts only.
-- `H10` Exit codes are invariant: `0` success, `1` business/tool/validation fail, `2` integrity/config/supervisor fail.
-- `H11` `L1` additivity: compiler/search/hydration may evolve; no `L0` runtime/protocol/tool-surface mutation for convenience.
-- `H12` Compiler branch law: exactly one output branch per run: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `H13` Compiler fail-closed law: strict sentinel extraction, strict schema verification, strict AST/tool/gather checks before any smoke/live execution.
-- `H14` Schema gate law: validate explicit artifact paths only; hidden `out/**` scanning is forbidden.
-- `H15` Capability growth (`op/tool/gate/schema`) requires same-change invariant delta + failing test + lint/schema/docs/tasks/learnings updates.
+- `H0` Policy root is this file; details only in imported `.codex/rules/*`.
+- `H1` Authority is `mise run ci`; `mise run fast` is `<3s` reject-signal only.
+- `H2` Gate order fixed fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
+- `H3` Determinism defaults mandatory: env pins, canonical JSON, sequence clock, total-order IDs/fields/results/errors.
+- `H4` Protocol algebra closed: `op in {call,result,final}`; exactly one `final`; `final` last.
+- `H5` Envelope law: `id=c%05d` monotonic unique per run; `seq` strict `+1`; deterministic field order.
+- `H6` Byte law: hash emitted/stored bytes only; boundary cap at writer; only `result` may truncate (`truncated,truncated_bytes`); rehash post-truncation.
+- `H7` Tool surface frozen (`{echo,readfile,bash}`); replay runs zero tools (`PIRML_BLOCK_TOOLS=1`).
+- `H8` Artifact law: every run (incl fatal) emits protocol `trace.ndjson` + `final.json`; any pointer artifact must resolve; loss is merge-blocking.
+- `H9` Channel split strict: stdout protocol only; diagnostics only stderr/artifacts.
+- `H10` Exit codes invariant: `0` success, `1` business/validation/tool fail, `2` integrity/config/internal fail.
+- `H11` Fail-closed by default: unknown plan/config/op/tool/schema, unsupported variant, or parse drift => typed failure (never fallback/skip/swallow).
+- `H12` Parallel law: independent work uses bounded fanout (`gather` + cap) with deterministic merge order; serial only with explicit reason code.
+- `H13` State law: no cross-run mutable runtime state; caches are structural, content-keyed, immutable-at-rest, copy-on-read.
+- `H14` Compiler branch law: exactly one branch per run: `{prog.py+contract.json}` xor `{compile_error.json}`; strict sentinels/schema/AST/tool checks before smoke/live.
+- `H15` Schema law: validate explicit artifact paths only; hidden `out/**` scanning forbidden.
+- `H16` Replay outranks live: any parity drift makes live untrusted until explained/fixed.
+- `H17` Capability growth (`op/tool/gate/schema`) needs same-change invariant delta + failing test + lint/schema/docs/tasks/learnings sync.
+- `H18` `L1` may evolve additively; no convenience mutation of `L0` contracts/surfaces.
 
 ## Decision Kernel
-- `D0` Unknown future: pick lower state-space + stricter determinism + cheaper verification.
-- `D1` Replay outranks live: divergence means live is untrusted until explained/fixed.
-- `D2` Typed errors (`type,msg,retryable`) beat text heuristics; permissive parsing/loading is a defect.
-- `D3` Total order everywhere: ranking, IDs, emitted fields, artifacts, error lists.
-- `D4` Boundary payloads stay compact (`final.json` is `{ok,results,output?,meta?}`); never leak raw transcripts.
-- `D5` One invariant, one owner, one canonical enforcement locus.
-- `D6` Structural caches only: key by content, immutable-at-rest, CI-safe, copy-on-read.
+- `D0` Unknown future: choose lower state-space, stricter determinism, cheaper verification.
+- `D1` Typed errors (`type,msg,retryable`) beat text heuristics; permissive parsing/loading is defect.
+- `D2` One invariant, one owner, one enforcement locus (`code|test|gate|doc`).
+- `D3` Matrix/eval integrity: run every declared branch or emit typed unsupported row; silent skip is fraud.
+- `D4` Metrics that drive winners/releases must be evidence-linked and deterministic; synthetic/unverifiable scoring is invalid.
+- `D5` Boundary payload stays compact (`final.json={ok,results,output?,meta?}`); raw transcripts/HTML/debug streams stay in artifacts.
 
 ## Engineering Doctrine
-- `E0` Python `3.12` + strict pyright; redesign awkward APIs before casting.
-- `E1` Prefer pure transforms and explicit dataclass/TypedDict boundaries over mutable ad-hoc dict flows.
-- `E2` Subprocess IO must be watchdog-safe (reader-thread/queue), never fragile buffered readiness tricks.
-- `E3` Scripts execute as modules (`python -m scripts.*`) only.
-- `E4` Prompt, verifier, runtime contracts must be mutually consistent (no dual truth).
+- `E0` Python `3.12` + strict pyright; redesign bad APIs before casting.
+- `E1` Prefer pure transforms + explicit dataclass/TypedDict seams over mutable ad-hoc dict pipelines.
+- `E2` Subprocess IO must be watchdog-safe (reader-thread/queue), not buffered-readiness hacks.
+- `E3` Scripts run as modules (`python -m scripts.*`) only.
+- `E4` Runtime, verifier, prompts, contracts, and schemas must describe one truth.
 
 ## Coding Style
-- `S0` Narrow typed inputs/outputs; avoid `Any` spread.
-- `S1` No wildcard exports; explicit public surfaces only.
-- `S2` Ordering-dependent behavior must define and test the exact tie-break key.
-- `S3` Golden artifacts are contractual bytes; tests must fail on drift/missing, never self-heal.
-- `S4` Bugfix protocol is fixed: reproduce -> failing test -> patch -> `fast` -> `ci` -> replay/schema proof if boundary touched.
-- `S5` Prefer deletion/merge over policy sprawl; every new rule must reduce real risk.
+- `S0` Narrow typed I/O; contain `Any` at boundaries only.
+- `S1` No wildcard exports/imports; explicit public surfaces.
+- `S2` Ordering behavior requires explicit tie-break key + direct tests.
+- `S3` No broad exception swallowing; map to typed fail lanes or explicit policy branches.
+- `S4` Goldens are contractual bytes; drift/missing must fail; no self-heal in tests.
+- `S5` Bugfix protocol fixed: reproduce -> failing test -> patch -> `fast` -> `ci` -> replay/schema proof if boundary touched.
+- `S6` Prefer delete/merge over policy/code sprawl; every rule/code addition must buy measurable risk reduction.
 
 ## Compounding Loop
 - `C0` Behavior delta without invariant delta is invalid.
-- `C1` Every incident/perf regression ships with stricter invariant + enforcement upgrade.
-- `C2` New learned pattern must update constitution/rules/tasks/learnings in same change.
-- `C3` Status ledgers are single-source and monotonic; contradictory cycle states are defects.
-- `C4` Handoff records stay ultra-terse: constraint + rationale + enforcement locus (`code|test|gate|doc`).
+- `C1` Incident/perf regression ships with stricter invariant + enforcement upgrade.
+- `C2` New pattern updates constitution/rules/tasks/learnings/tutorial in same merge.
+- `C3` Status ledgers single-source, monotonic, contradiction-free.
+- `C4` Handoff record format: `constraint | rationale | locus | proof-cmd`.
 
 ## Operator Entry Points
 - Setup: `mise run boot`
 - Fast reject: `mise run fast`
-- Full authority: `mise run ci`
+- Authority gate: `mise run ci`
 - Replay parity smoke: `python -m scripts.replay_check`
 - Perf smoke: `mise run bench` (`out/bench.json`)
 
 ## Memory Layout
 - Shared policy: `AGENTS.md` (tracked)
 - Path-scoped detail: `.codex/rules/*.md`
-- Optional private prefs: `AGENTS.local.md` (gitignored)
+- Private prefs: `AGENTS.local.md` (gitignored)
 
 @.codex/rules/10-runtime-protocol.md
 @.codex/rules/20-tests-determinism.md
