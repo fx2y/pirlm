@@ -9,36 +9,8 @@ if TYPE_CHECKING:
     from pirml.web.types import ChunkRow
 
 
-def score_query_overlap(chunk: ChunkRow, *, query: str) -> float:
-    # B4a scorer: Query token overlap + answer-shape regex
-    text = chunk["text"].lower()
-    query = query.lower()
-
-    # Query overlap
-    query_tokens = set(re.findall(r"\w+", query))
-    if not query_tokens:
-        return 0.0
-
-    chunk_tokens = re.findall(r"\w+", text)
-    overlap_count = sum(1 for t in chunk_tokens if t in query_tokens)
-    overlap_score = overlap_count / len(query_tokens)
-
-    # Answer-shape regex: years, numbers, definitions
-    shape_score = 0.0
-    if re.search(r"\b\d{4}\b", text):  # Year-like
-        shape_score += 0.2
-    if re.search(r"\d+[\.\,]\d+", text):  # Float-like
-        shape_score += 0.2
-    if re.search(r"\b(defined as|is a|means|referred to as)\b", text):  # Def-like
-        shape_score += 0.3
-
-    return overlap_score + shape_score
-
-
 def score_bm25(chunks: list[ChunkRow], *, query: str) -> list[ChunkRow]:
     # B4b scorer: BM25 over chunks
-    # Simplified BM25 if not reusing index.py
-    # But let's check index.py first
     query_tokens = re.findall(r"\w+", query.lower())
     if not query_tokens or not chunks:
         return chunks
@@ -75,4 +47,4 @@ def score_bm25(chunks: list[ChunkRow], *, query: str) -> list[ChunkRow]:
     return chunks
 
 
-__all__ = ["score_bm25", "score_query_overlap"]
+__all__ = ["score_bm25"]

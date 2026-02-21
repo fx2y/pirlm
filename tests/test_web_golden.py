@@ -8,7 +8,7 @@ from typing import Any, cast
 
 from pirml.clock import SequenceClock
 from pirml.web.cite import pack_citations
-from pirml.web.etl.html_chunks import extract_html_chunks
+from pirml.web.etl import fallback_extract
 from pirml.web.fetch import FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.search import MockProvider
@@ -39,9 +39,10 @@ class WebGoldenTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actual_json, expected_json, f"Golden drift for {name}")
 
     def test_extract_golden(self) -> None:
-        """C4.T1: Golden artifact for extraction."""
+        """C4.T1: Golden artifact for extraction (robust text)."""
         html = Path("tests/fixtures/web/docs/page.html").read_text()
-        chunks = extract_html_chunks(
+        # Winner B3b: robust text extraction
+        chunks = fallback_extract(
             html, url="https://example.com/p", doc_sha256="s1", source_rank=1, doc_rank=1
         )
         self._assert_golden("extract_page", chunks)
@@ -92,13 +93,9 @@ class WebGoldenTests(unittest.IsolatedAsyncioTestCase):
         pipeline = WebPipeline(
             provider=provider, fetcher=fetcher, clock=self.clock, tracer=self.tracer
         )
-        plan = WebPlan(
-            provider="mock", cache="memory", parser="html", scorer="bm25", cite_mode="quote"
-        )
+        plan = WebPlan(provider="mock", cache="memory")
 
         result = await pipeline.run("pirml", plan)
-        # Remove volatile fields? Pipeline result doesn't have retrieved_at at root usually, but within citations.
-        # But our clock is deterministic in tests (from_env usually uses 0 if not set, or we can pin it).
         self._assert_golden("pipeline_pirml", result)
 
 

@@ -9,14 +9,9 @@ from pirml.web.pipeline import WebPlan
 class WebEvalTests(unittest.IsolatedAsyncioTestCase):
     def test_web_plan_polymorphism(self) -> None:
         """C3.I1: WebPlan polymorphic execution without core if-else explosion."""
-        plan = WebPlan(
-            provider="mock", cache="memory", parser="html", scorer="bm25", cite_mode="quote"
-        )
+        plan = WebPlan(provider="mock", cache="memory")
         self.assertEqual(plan.provider, "mock")
         self.assertEqual(plan.cache, "memory")
-        self.assertEqual(plan.parser, "html")
-        self.assertEqual(plan.scorer, "bm25")
-        self.assertEqual(plan.cite_mode, "quote")
 
     def test_web_plan_fails_on_invalid_config(self) -> None:
         """C3.I1: WebPlan fail path with invalid config."""

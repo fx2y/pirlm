@@ -39,9 +39,6 @@ async def smoke():
     plan = WebPlan(
         provider="mock",
         cache="sqlite",
-        parser="html_parser_primary",
-        scorer="bm25_chunk",
-        cite_mode="quote_anchor",
     )
 
     try:

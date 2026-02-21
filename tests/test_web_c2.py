@@ -8,10 +8,9 @@ from typing import cast
 
 from pirml.clock import SequenceClock
 from pirml.web.cite import pack_citations
-from pirml.web.etl.core import fallback_extract, kill_boilerplate
-from pirml.web.etl.html_chunks import extract_html_chunks
-from pirml.web.etl.join import join_chunks
-from pirml.web.etl.score import score_bm25, score_query_overlap
+from pirml.web.etl import fallback_extract, kill_boilerplate
+from pirml.web.etl_join import join_chunks
+from pirml.web.etl_score import score_bm25
 from pirml.web.fetch import FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.search import MockProvider
@@ -23,32 +22,6 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.clock = SequenceClock.from_env()
         self.tracer = WebTracer()
-
-    def test_html_extraction(self):
-        html = """
-        <html>
-            <head><title>Test Title</title></head>
-            <body>
-                <h1>Header 1</h1>
-                <p>Paragraph text here.</p>
-                <ul><li>Item 1</li></ul>
-                <nav><a href="/">Home</a></nav>
-            </body>
-        </html>
-        """
-        chunks = extract_html_chunks(html, url="u1", doc_sha256="s1", source_rank=1, doc_rank=1)
-        kinds = [c["kind"] for c in chunks]
-        self.assertIn("title", kinds)
-        self.assertIn("h1", kinds)
-        self.assertIn("p", kinds)
-        self.assertIn("li", kinds)
-
-        # Verify 800 char cap
-        long_html = "<p>" + "a" * 1000 + "</p>"
-        chunks = extract_html_chunks(
-            long_html, url="u1", doc_sha256="s1", source_rank=1, doc_rank=1
-        )
-        self.assertEqual(len(chunks[0]["text"]), 800)
 
     def test_fallback_extract(self):
         html = "No tags here but some text."
@@ -114,10 +87,6 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
                 "doc_rank": 1,
             },
         )
-
-        # Overlap + shape
-        s1 = score_query_overlap(chunk, query="Python programming")
-        self.assertTrue(s1 > 0.5)  # Overlap + Year + Def-like "is a"
 
         # BM25
         chunks = cast(
@@ -216,9 +185,7 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
             provider=provider, fetcher=fetcher, clock=self.clock, tracer=self.tracer
         )
 
-        plan = WebPlan(
-            provider="mock", cache="memory", parser="html", scorer="bm25", cite_mode="quote"
-        )
+        plan = WebPlan(provider="mock", cache="memory")
 
         result = await pipeline.run("what is pirml?", plan)
         self.assertTrue(len(result["citations"]) > 0)

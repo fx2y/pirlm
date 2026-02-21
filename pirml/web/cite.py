@@ -60,17 +60,16 @@ def build_citation(
 
 
 def pack_citations(
-    chunks: list[ChunkRow], *, clock: SequenceClock, query: str = "", mode: str = "quote_anchor"
+    chunks: list[ChunkRow],
+    *,
+    clock: SequenceClock,
+    query: str = "",
 ) -> list[CiteRow]:
     query_hints = re.findall(r"\w+", query.lower()) if query else []
     results: list[CiteRow] = []
     for chunk in chunks:
-        if mode == "quote_anchor":
-            quote = find_quote_in_chunk(chunk, query_hints=query_hints)
-        else:
-            # paraphrase_anchor: just use the whole chunk or first N words
-            quote = chunk["text"]
-
+        # B5a: Winner quote_anchor only
+        quote = find_quote_in_chunk(chunk, query_hints=query_hints)
         results.append(
             build_citation(
                 chunk=chunk,

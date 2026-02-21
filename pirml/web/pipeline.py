@@ -7,10 +7,9 @@ from typing import TYPE_CHECKING
 from pirml.clock import SequenceClock
 
 from .cite import pack_citations
-from .etl.core import fallback_extract, kill_boilerplate, select_top_chunks
-from .etl.html_chunks import extract_html_chunks
-from .etl.join import join_chunks
-from .etl.score import score_bm25, score_query_overlap
+from .etl import fallback_extract, kill_boilerplate, select_top_chunks
+from .etl_join import join_chunks
+from .etl_score import score_bm25
 from .search import rank_and_diversify
 from .types import ChunkRow, CiteRow, WebFinal
 
@@ -24,9 +23,6 @@ if TYPE_CHECKING:
 class WebPlan:
     provider: str
     cache: str
-    parser: str
-    scorer: str
-    cite_mode: str
     max_chunks: int = 40
     per_domain_cap: int = 2
     serp_k: int = 10
@@ -68,35 +64,14 @@ class WebPipeline:
                 if doc["status"] != 200:
                     continue
 
-                # C3.T3 / B3 switch
-                if plan.parser == "html_parser_primary":
-                    chunks = extract_html_chunks(
-                        doc["body"],
-                        url=doc["url"],
-                        doc_sha256=doc["body_sha256"],
-                        source_rank=row["rank"],
-                        doc_rank=i,
-                    )
-                    # C2.T1: Fallback if low coverage
-                    if len(chunks) < 3:
-                        chunks.extend(
-                            fallback_extract(
-                                doc["body"],
-                                url=doc["url"],
-                                doc_sha256=doc["body_sha256"],
-                                source_rank=row["rank"],
-                                doc_rank=i,
-                            )
-                        )
-                else:
-                    # dumb_text_primary
-                    chunks = fallback_extract(
-                        doc["body"],
-                        url=doc["url"],
-                        doc_sha256=doc["body_sha256"],
-                        source_rank=row["rank"],
-                        doc_rank=i,
-                    )
+                # Winner B3b: robust text extraction
+                chunks = fallback_extract(
+                    doc["body"],
+                    url=doc["url"],
+                    doc_sha256=doc["body_sha256"],
+                    source_rank=row["rank"],
+                    doc_rank=i,
+                )
 
                 all_chunks.extend(chunks)
             except Exception:
@@ -115,13 +90,8 @@ class WebPipeline:
 
         filtered_chunks = kill_boilerplate(all_chunks, global_counts=self._global_boilerplate_cache)
 
-        # C3.T4 / B4 switch
-        if plan.scorer == "bm25_chunk":
-            filtered_chunks = score_bm25(filtered_chunks, query=query)
-        else:
-            # keyword_regex
-            for c in filtered_chunks:
-                c["score"] = score_query_overlap(c, query=query)
+        # Winner B4b: BM25 scoring
+        filtered_chunks = score_bm25(filtered_chunks, query=query)
 
         # C2.T5: Global selector
         top_chunks = select_top_chunks(filtered_chunks, n=plan.max_chunks)
@@ -132,9 +102,7 @@ class WebPipeline:
 
         # 6. Cite
         # C2.T7: Pack citations
-        citations = pack_citations(
-            joined_chunks, clock=self.clock, query=query, mode=plan.cite_mode
-        )
+        citations = pack_citations(joined_chunks, clock=self.clock, query=query)
 
         # 7. Project final
         # Simple answer generation for now

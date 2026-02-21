@@ -65,17 +65,16 @@ async def run_shard(
 
         # Calculate metrics from tracer
         frames = query_tracer.get_frames()
-        fetches = sum(1 for f in frames if cast(Any, f).get("op") == "fetch_call")
-        total_bytes = sum(
-            cast(Any, f).get("bytes", 0) for f in frames if cast(Any, f).get("op") == "fetch_result"
-        )
+        # Filter for web-specific frames
         fetch_results = [f for f in frames if cast(Any, f).get("op") == "fetch_result"]
+        fetches = len(fetch_results)
+        total_bytes = sum(cast(Any, f).get("bytes", 0) for f in fetch_results)
         cache_hits = sum(1 for f in fetch_results if cast(Any, f).get("cache_hit"))
         cache_hit_rate = cache_hits / len(fetch_results) if fetch_results else 0.0
 
         # Calculate accuracy (mocked but deterministic based on qid)
-        # B4b (bm25_chunk) should perform slightly better in our mock
-        base_acc = 0.8 if plan.scorer == "bm25_chunk" else 0.75
+        # B4b (bm25_chunk) is now the only one, but we keep the mock formula
+        base_acc = 0.8
         acc = base_acc + (hash(qid) % 100) / 1000.0
 
         eval_row: EvalRow = {

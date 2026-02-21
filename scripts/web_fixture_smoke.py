@@ -40,9 +40,6 @@ async def main():
     plan = WebPlan(
         provider="mock",
         cache="memory",
-        parser="html_parser_primary",
-        scorer="bm25_chunk",
-        cite_mode="quote_anchor",
     )
 
     result = await pipeline.run("pirml", plan)

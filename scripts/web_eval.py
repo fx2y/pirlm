@@ -4,38 +4,25 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from pirml.web.eval.metrics import metric_tuple
+from pirml.web.eval import metric_tuple
 from pirml.web.pipeline import WebPlan
 
 
 def resolve_plan(plan_str: str) -> WebPlan:
-    # Example: (B1a,B2a,B3a,B4a,B5a)
+    # Example: (B1a,B2a,B3b,B4b,B5a)
     parts = plan_str.strip("()").split(",")
     # B1a -> searx_json, B1b -> vendor_http
-    # B2a -> sqlite, B2b -> fs
-    # B3a -> html_parser_primary, B3b -> dumb_text_primary
-    # B4a -> keyword_regex, B4b -> bm25_chunk
-    # B5a -> quote_anchor, B5b -> paraphrase_anchor
+    # B2a -> sqlite
 
     mapping = {
         "B1a": "searx_json",
         "B1b": "vendor_http",
         "B2a": "sqlite",
-        "B2b": "fs",
-        "B3a": "html_parser_primary",
-        "B3b": "dumb_text_primary",
-        "B4a": "keyword_regex",
-        "B4b": "bm25_chunk",
-        "B5a": "quote_anchor",
-        "B5b": "paraphrase_anchor",
     }
 
     return WebPlan(
         provider=mapping[parts[0]],
         cache=mapping[parts[1]],
-        parser=mapping[parts[2]],
-        scorer=mapping[parts[3]],
-        cite_mode=mapping[parts[4]],
     )
 
 
@@ -44,7 +31,6 @@ def select_winner(all_results: list[dict[str, Any]]) -> str:
         raise ValueError("Empty run list")
 
     # Selection rule: lexicographic max on (acc, -bytes, -chunks, -fetches, cache_hit)
-    # metric_tuple: (acc, -bytes, -chunks, -fetches, cache_hit)
     winner = max(
         all_results,
         key=lambda r: metric_tuple(
@@ -77,6 +63,11 @@ def main():
     all_results: list[dict[str, Any]] = []
 
     for plan_str in plans:
+        # C5: B3a, B2b, B4a are purged.
+        # Only the winner plan (B1a,B2a,B3b,B4b,B5a) is fully supported now.
+        if plan_str != "(B1a,B2a,B3b,B4b,B5a)":
+            continue
+
         plan = resolve_plan(plan_str)
         plan_json = json.dumps(plan.__dict__)
 
@@ -84,11 +75,11 @@ def main():
         cache_dir = out_dir / f"cache_{plan_str}"
         cache_dir.mkdir(exist_ok=True)
 
-        # Call browsecomp_shard.py
+        # Call eval_shard.py
         cmd = [
             sys.executable,
             "-m",
-            "pirml.web.eval.browsecomp_shard",
+            "pirml.web.eval_shard",
             "--queries",
             str(queries_path),
             "--plan",

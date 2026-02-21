@@ -54,7 +54,7 @@ def rank_and_diversify(
         tracer.emit(
             "search_result",
             status=200,
-            bytes=0,  # Not applicable here
+            bytes=0,
             ms=int(time.time() * 1000) - start_ms,
         )
     return selected
@@ -74,7 +74,7 @@ class MockProvider:
 
 
 class SearxJsonProvider:
-    """B1a: Searx JSON provider (re-uses MockProvider logic for now but typed for B1)."""
+    """B1a: Searx JSON provider."""
 
     def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
         self._mock = MockProvider(responses)
@@ -85,23 +85,10 @@ class SearxJsonProvider:
         return await self._mock.search(query, tracer=tracer)
 
 
-class VendorHttpProvider:
-    """B1b: Vendor HTTP provider (re-uses MockProvider logic for now but typed for B1)."""
-
-    def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
-        self._mock = MockProvider(responses)
-
-    async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]:
-        if tracer:
-            tracer.emit("search_call", q=query, provider="vendor_http")
-        return await self._mock.search(query, tracer=tracer)
-
-
 def provider_factory(kind: str, responses: dict[str, list[SerpRow]]) -> Provider:
+    # B1a is the winner, or mock for testing
     if kind == "searx_json":
         return SearxJsonProvider(responses)
-    if kind == "vendor_http":
-        return VendorHttpProvider(responses)
     return MockProvider(responses)
 
 
@@ -109,7 +96,6 @@ __all__ = [
     "MockProvider",
     "Provider",
     "SearxJsonProvider",
-    "VendorHttpProvider",
     "provider_factory",
     "rank_and_diversify",
 ]
