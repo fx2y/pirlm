@@ -8,8 +8,8 @@ from pirml.compiler.model import ModelAdapter
 from .kernel import RlmBudget, RlmKernel
 
 
-def run_rlm(
+async def run_rlm(
     prompt: str, store: ArtifactStore, model: ModelAdapter, budget: RlmBudget | None = None
 ) -> Any:
     kernel = RlmKernel(store, model, budget)
-    return kernel.run(prompt)
+    return await kernel.run(prompt)

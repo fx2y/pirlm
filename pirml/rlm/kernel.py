@@ -13,6 +13,8 @@ from pirml.artifacts.view_dsl import SliceSpec
 from pirml.artifacts.view_materialize import ViewMaterializer
 from pirml.clock import SequenceClock
 from pirml.compiler.model import ModelAdapter
+import asyncio
+from pirml.web.etl import chunk_views, pack_batches
 
 from .errors import RlmKernelError
 from .history import RlmHistory
@@ -65,8 +67,9 @@ class RlmKernel:
         self.history = RlmHistory()
         self.view_vm = ViewMaterializer(store)
         self._subcall_count = 0
+        self._parallel_sem = asyncio.Semaphore(self.budget["max_parallel"])
 
-    def run(self, prompt: str) -> Any:
+    async def run(self, prompt: str) -> Any:
         import time
 
         start_time = time.monotonic()
@@ -77,6 +80,9 @@ class RlmKernel:
             "get": self._get_helper,
             "put": self._put_helper,
             "llm_query": self._llm_query_helper,
+            "amap": self._amap_helper,
+            "chunk_views": chunk_views,
+            "pack_batches": pack_batches,
         }
 
         iters = 0
@@ -90,10 +96,10 @@ class RlmKernel:
 
             # 1. Root LM generates code
             full_prompt = self._build_prompt(state)
-            code = self.model.compile_once(full_prompt)
+            code = await asyncio.to_thread(self.model.compile_once, full_prompt)
 
             # 2. REPL exec
-            stdout = self._repl_exec(state, code, helpers)
+            stdout = await self._repl_exec(state, code, helpers)
 
             # 3. History update (metadata only) C3.T03
             self.history.append(
@@ -119,18 +125,29 @@ class RlmKernel:
         # Simplistic prompt for now, showing metadata-only history
         return f"Prompt: {state.P}\nHistory: {self.history.to_dict_list()}\nVars: {state.to_dict()}"
 
-    def _repl_exec(self, state: RlmState, code: str, helpers: dict[str, Any]) -> str:
+    async def _repl_exec(self, state: RlmState, code: str, helpers: dict[str, Any]) -> str:
         # C3.T07: Enforce channel split
         stdout = io.StringIO()
         with contextlib.redirect_stdout(stdout):
             try:
                 globs = state.to_dict()
                 globs.update(helpers)
-                exec(code, globs)
+                # To support async in exec, we wrap in an async function
+                # or use a more sophisticated approach. 
+                # For C4, we want top-level await support in the generated code.
+                if "await " in code:
+                    wrap_code = f"async def __rlm_exec_wrap():\n" + "\n".join(f"    {l}" for l in code.splitlines())
+                    locs: dict[str, Any] = {}
+                    exec(wrap_code, globs, locs)
+                    await locs["__rlm_exec_wrap"]()
+                else:
+                    exec(code, globs)
                 state.update(globs)
             except RlmKernelError:
                 raise
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 print(f"Error: {e}")
         return stdout.getvalue()
 
@@ -154,16 +171,17 @@ class RlmKernel:
         except Exception as e:
             raise RlmKernelError(error_type=RlmErrorType.INTEGRITY, msg=str(e)) from e
 
-    def _put_helper(self, data: bytes | str, kind: str = "raw", mime: str = "text/plain") -> str:
+    def _put_helper(
+        self, data: bytes | str, kind: str = "raw", mime: str = "text/plain", parents: list[str] | None = None
+    ) -> str:
         data_bytes = data.encode("utf-8") if isinstance(data, str) else data
-        return self.store.put_raw(data_bytes, kind=kind, mime=mime)
+        return self.store.put_raw(data_bytes, kind=kind, mime=mime, parents=parents)
 
-    def _llm_query_helper(self, prompt: str) -> str:
+    async def _llm_query_helper(self, prompt: str) -> str:
         # C3.T06: Budget guards
         self._subcall_count += 1
         if self._subcall_count > 20:
             import sys
-
             print(
                 f"Warning: subcall count {self._subcall_count} exceeds soft limit 20",
                 file=sys.stderr,
@@ -174,4 +192,13 @@ class RlmKernel:
                 error_type=RlmErrorType.BUDGET_EXCEEDED,
                 msg=f"Max subcalls ({self.budget['max_subcalls']}) exceeded",
             )
-        return self.model.compile_once(prompt)
+        return await asyncio.to_thread(self.model.compile_once, prompt)
+
+    async def _amap_helper(self, prompts: list[str]) -> list[str]:
+        """C4.T02: Map step uses bounded asyncio.gather; merge order equals source chunk order"""
+        async def _limited_query(p: str) -> str:
+            async with self._parallel_sem:
+                return await self._llm_query_helper(p)
+        
+        tasks = [asyncio.create_task(_limited_query(p)) for p in prompts]
+        return list(await asyncio.gather(*tasks))

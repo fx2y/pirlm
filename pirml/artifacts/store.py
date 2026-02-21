@@ -164,6 +164,10 @@ class ArtifactStore:
         """C1.T06: Retrieve parent ids for an artifact"""
         return self._index.resolve_parents(aid)
 
+    def find_by_kind(self, kind: str) -> list[str]:
+        """Retrieve artifact ids by kind."""
+        return self._index.find_by_kind(kind)
+
     def get_view_text(self, vid: str) -> str:
         """Helper to read and concatenate text from an ndjson view."""
         path_str = self._index.get_path(vid)

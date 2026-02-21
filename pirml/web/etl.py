@@ -96,10 +96,58 @@ def select_top_chunks(chunks: list[ChunkRow], *, n: int = 40) -> list[ChunkRow]:
     return sorted_chunks[:n]
 
 
+def chunk_views(view_texts: list[str], max_chars: int = 12000) -> list[str]:
+    """C4.T00: Chunker consumes view artifacts and emits deterministic chunk groups"""
+    chunks = []
+    for text in view_texts:
+        # Split by paragraphs or double newlines to keep semantic units if possible
+        units = re.split(r"(\n\n+)", text)
+        current = []
+        current_len = 0
+        for unit in units:
+            if current_len + len(unit) > max_chars and current:
+                chunks.append("".join(current))
+                current = []
+                current_len = 0
+            
+            # If a single unit is too large, hard cut
+            if len(unit) > max_chars:
+                for i in range(0, len(unit), max_chars):
+                    chunks.append(unit[i:i+max_chars])
+                continue
+
+            current.append(unit)
+            current_len += len(unit)
+        
+        if current:
+            chunks.append("".join(current))
+            
+    return chunks
+
+
+def pack_batches(chunks: list[str], max_chars: int = 12000) -> list[str]:
+    """C4.T01: Batch pack slices into bounded payload windows"""
+    batches = []
+    current: list[str] = []
+    current_len = 0
+    for c in chunks:
+        if current_len + len(c) > max_chars and current:
+            batches.append("\n---\n".join(current))
+            current = []
+            current_len = 0
+        current.append(c)
+        current_len += len(c)
+    if current:
+        batches.append("\n---\n".join(current))
+    return batches
+
+
 __all__ = [
     "clamp_chunk_text",
     "stable_chunk_sort",
     "fallback_extract",
     "kill_boilerplate",
     "select_top_chunks",
+    "chunk_views",
+    "pack_batches",
 ]

@@ -109,3 +109,7 @@ class ArtifactsIndex:
             "SELECT parent FROM parents WHERE child = ? ORDER BY pos", (aid,)
         ).fetchall()
         return [r[0] for r in rows]
+
+    def find_by_kind(self, kind: str) -> list[str]:
+        rows = self._conn.execute("SELECT id FROM artifacts WHERE kind = ?", (kind,)).fetchall()
+        return [r[0] for r in rows]
