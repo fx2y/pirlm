@@ -1,7 +1,7 @@
 {
   "responses": [
     {
-      "url": "https://Example.com/docs/page?b=2&a=1&utm_source=ads#section",
+      "url": "https://example.com/docs/page?a=1&b=2",
       "final_url": "https://example.com/docs/page?a=1&b=2",
       "status": 200,
       "headers": {
@@ -11,6 +11,17 @@
       "content_type": "text/html",
       "encoding_guess": "utf-8",
       "body_file": "docs/page.html"
+    },
+    {
+      "url": "https://example.com/docs/page2",
+      "final_url": "https://example.com/docs/page2",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8"
+      },
+      "content_type": "text/html",
+      "encoding_guess": "utf-8",
+      "body_file": "docs/page2.html"
     }
   ]
 }

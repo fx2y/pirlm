@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import time
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
+from urllib.request import Request, urlopen
 
 from .trace import WebTracer
 from .types import SerpRow
@@ -76,19 +80,75 @@ class MockProvider:
 class SearxJsonProvider:
     """B1a: Searx JSON provider."""
 
-    def __init__(self, responses: dict[str, list[SerpRow]]) -> None:
-        self._mock = MockProvider(responses)
+    def __init__(
+        self,
+        base_url: str | None = None,
+        responses: dict[str, list[SerpRow]] | None = None,
+    ) -> None:
+        self.base_url = base_url
+        self._mock = MockProvider(responses or {})
 
     async def search(self, query: str, tracer: WebTracer | None = None) -> list[SerpRow]:
         if tracer:
             tracer.emit("search_call", q=query, provider="searx_json")
-        return await self._mock.search(query, tracer=tracer)
+
+        if self.base_url:
+            start_ms = int(time.time() * 1000)
+            try:
+                rows = await asyncio.to_thread(self._sync_search, query)
+                if tracer:
+                    tracer.emit(
+                        "search_result",
+                        status=200,
+                        ms=int(time.time() * 1000) - start_ms,
+                    )
+                return rows
+            except Exception as e:
+                if tracer:
+                    tracer.emit(
+                        "search_result",
+                        status=0,
+                        error=str(e),
+                        ms=int(time.time() * 1000) - start_ms,
+                    )
+                raise
+        else:
+            return await self._mock.search(query, tracer=tracer)
+
+    def _sync_search(self, query: str) -> list[SerpRow]:
+        params = {
+            "q": query,
+            "format": "json",
+            "categories": "general",
+        }
+        # Safely join base_url
+        base = self.base_url or ""
+        url = f"{base.rstrip('/')}/search?{urlencode(params)}"
+        req = Request(url, headers={"User-Agent": "pirml/0.1"})
+
+        with urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            results = data.get("results", [])
+
+            serp_rows: list[SerpRow] = []
+            for i, res in enumerate(results):
+                serp_rows.append(
+                    {
+                        "url": res["url"],
+                        "title": res["title"],
+                        "snippet": res.get("content", ""),
+                        "rank": i + 1,
+                        "source": "searx",
+                    }
+                )
+            return serp_rows
 
 
 def provider_factory(kind: str, responses: dict[str, list[SerpRow]]) -> Provider:
     # B1 winner is searx_json; keep explicit mock hook for deterministic tests.
     if kind == "searx_json":
-        return SearxJsonProvider(responses)
+        base_url = os.environ.get("SEARX_BASE_URL")
+        return SearxJsonProvider(base_url=base_url, responses=responses)
     if kind == "mock":
         return MockProvider(responses)
     if kind == "vendor_http":

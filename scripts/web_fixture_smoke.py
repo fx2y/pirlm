@@ -45,7 +45,7 @@ async def main():
         cache="memory",
     )
 
-    result = await pipeline.run("pirml", plan)
+    result = await pipeline.run("pirml", plan, trace_filename="web_trace.ndjson")
 
     # Write artifacts to out_dir
     (out_dir / "web_output.json").write_text(canonical_json(result), encoding="utf-8")

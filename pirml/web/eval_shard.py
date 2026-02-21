@@ -32,11 +32,22 @@ async def run_shard(
     # provider_factory expects dict[str, list[SerpRow]]
     provider_responses: dict[str, list[SerpRow]] = {}
     for q in queries:
+        query_text = q["query"].lower()
+        if "pirml" in query_text:
+            url = "https://example.com/docs/page?a=1&b=2"
+            title = "PIRML Documentation"
+        elif "deterministic" in query_text:
+            url = "https://example.com/docs/page2"
+            title = "Deterministic Testing Guide"
+        else:
+            url = "https://example.com/docs/unknown"
+            title = "Unknown Page"
+
         provider_responses[q["query"]] = [
             {
-                "url": "https://example.com/docs/page?a=1&b=2",
-                "title": "Page 1",
-                "snippet": "Snippet 1",
+                "url": url,
+                "title": title,
+                "snippet": f"This is a relevant snippet for {q['query']}",
                 "rank": 1,
                 "source": "mock",
             },
@@ -51,7 +62,13 @@ async def run_shard(
     base_fetcher = FixtureDocFetcher(responses_path)
     fetcher = CachedDocFetcher(base_fetcher, cache=cache)
 
-    pipeline = WebPipeline(provider=provider, fetcher=fetcher, clock=clock, tracer=tracer)
+    pipeline = WebPipeline(
+        provider=provider,
+        fetcher=fetcher,
+        clock=clock,
+        tracer=tracer,
+        trace_dir=cache_path,
+    )
 
     results: list[EvalRow] = []
     for q_row in queries:
@@ -63,7 +80,7 @@ async def run_shard(
         pipeline.tracer = query_tracer
 
         # Run pipeline
-        final = await pipeline.run(query, plan)
+        final = await pipeline.run(query, plan, trace_filename=f"web_trace_{qid}.ndjson")
 
         # Calculate metrics from tracer
         frames = query_tracer.get_frames()

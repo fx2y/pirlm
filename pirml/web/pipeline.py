@@ -53,7 +53,7 @@ class WebPipeline:
         self.tracer = tracer
         self.trace_dir = trace_dir
 
-    async def run(self, query: str, plan: WebPlan) -> WebFinal:
+    async def run(self, query: str, plan: WebPlan, trace_filename: str | None = None) -> WebFinal:
         # 1. Search
         serp = await self.provider.search(query, tracer=self.tracer)
 
@@ -61,6 +61,21 @@ class WebPipeline:
         selected_serp = rank_and_diversify(
             serp, k=min(plan.serp_k, 8), per_domain_cap=plan.per_domain_cap, tracer=self.tracer
         )
+
+        # Common trace pointer generation for T02
+        if trace_filename is None:
+            trace_filename = f"web_trace_{self.clock.now()}.ndjson"
+        trace_ptr = str(self.trace_dir / trace_filename)
+
+        if not selected_serp:
+            # T04: empty SERP
+            if self.tracer is not None:
+                self.tracer.write_to(Path(trace_ptr))
+            return project_final(
+                answer="No search results found.",
+                citations=[],
+                trace_ptr=trace_ptr,
+            )
 
         # 3. Fetch + ETL (bounded parallel fanout; stable merge order)
         semaphore = asyncio.Semaphore(max(plan.max_parallel_fetch, 1))
@@ -94,8 +109,16 @@ class WebPipeline:
         tasks = [_fetch_extract(i, row) for i, row in enumerate(selected_serp)]
         batches = await asyncio.gather(*tasks)
         all_chunks = [chunk for batch in batches for chunk in batch]
-        if selected_serp and not all_chunks:
-            raise ValueError("all selected SERP documents failed during fetch/extract")
+
+        if not all_chunks:
+            # T04: empty extracts
+            if self.tracer is not None:
+                self.tracer.write_to(Path(trace_ptr))
+            return project_final(
+                answer="No relevant content could be extracted from search results.",
+                citations=[],
+                trace_ptr=trace_ptr,
+            )
 
         # 4. Global ETL
         # C2.T2: Boilerplate kill
@@ -123,10 +146,14 @@ class WebPipeline:
         citations = pack_citations(joined_chunks, clock=self.clock, query=query)
 
         # 7. Project final
-        # Simple answer generation for now
-        answer = " ".join([c["text"] for c in joined_chunks[:3]])
+        # T05: Concise answer generator
+        answer_parts: list[str] = []
+        for c in joined_chunks[:3]:
+            sent = re.split(r"(?<=[.!?])\s+", c["text"])[0]
+            if sent not in answer_parts:
+                answer_parts.append(sent)
+        answer = " ".join(answer_parts) if answer_parts else "No relevant information found."
 
-        trace_ptr = str(self.trace_dir / "web_trace.ndjson")
         if self.tracer is not None:
             self.tracer.write_to(Path(trace_ptr))
         return project_final(
