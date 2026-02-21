@@ -13,7 +13,7 @@ class RlmHistory:
 
     def append(
         self,
-        ev: Literal["call", "result", "log"],
+        ev: Literal["call", "result", "log", "custom"],
         prefix: str,
         full_len: int,
         ts: int,

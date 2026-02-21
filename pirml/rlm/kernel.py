@@ -55,6 +55,7 @@ class RlmKernel:
         model_adapter: ModelAdapter,
         budget: RlmBudget | None = None,
         clock: SequenceClock | None = None,
+        emit_pi_pointers: bool | None = None,
     ) -> None:
         self.store = store
         self.model = model_adapter
@@ -65,6 +66,12 @@ class RlmKernel:
             "timeout_s": 30.0,
         }
         self.clock = clock or SequenceClock.from_env()
+        # C6.T00: Opt-in via flag or env
+        if emit_pi_pointers is None:
+            import os
+
+            emit_pi_pointers = os.getenv("PIRML_EMIT_PI_POINTERS") == "1"
+        self.emit_pi_pointers = emit_pi_pointers
         self.history = RlmHistory()
         self.view_vm = ViewMaterializer(store)
         self._subcall_count = 0
@@ -133,6 +140,21 @@ class RlmKernel:
                     }
                     out_path.write_text(json.dumps(web_out, indent=2))
 
+                    # C6.T01: Emit pi CustomEntry pointer row
+                    if self.emit_pi_pointers:
+                        from pirml.runtime.rpc import send_custom
+
+                        # Collect roots from DOCS/CHUNKS/SUMS
+                        roots = list(set(state.DOCS + state.CHUNKS + state.SUMS))
+                        send_custom(
+                            "pirml",
+                            {
+                                "trace": str(self.store.layout.trace_path),
+                                "final": str(out_path),
+                                "roots": roots,
+                            },
+                        )
+
                 return state.Final
 
             iters += 1
@@ -144,7 +166,7 @@ class RlmKernel:
 
     def build_prompt(self, state: RlmState) -> str:
         # C5.T02/T04: Context Governor with bulk off-ctx
-        from .governor import K_CAP_TOKENS, apply_cohesion_rule, pack_ctx
+        from .governor import K_CAP_TOKENS, apply_cohesion_rule, est_tokens, pack_ctx
 
         items: list[dict[str, Any]] = []
         # Variables
@@ -179,6 +201,10 @@ class RlmKernel:
 
         # History
         for f in self.history:
+            # C6.T03: Hard-block ctx contamination
+            if f["ev"] == "custom":
+                continue
+
             items.append(
                 {
                     "id": f"history:{f['seq']}",
@@ -209,6 +235,19 @@ class RlmKernel:
             parts.append("Variables:\n" + "\n".join(vars_block))
         if hist_block:
             parts.append("History:\n" + "\n".join(hist_block))
+
+        if self.emit_pi_pointers:
+            from pirml.runtime.rpc import send_custom
+            tokens_before = sum(est_tokens(it["text"]) for it in items)
+            first_kept = final_ids[0] if final_ids else None
+            send_custom(
+                "pirml_summary",
+                {
+                    "summary": f"Context packed: {len(final_ids)}/{len(items)} items kept",
+                    "firstKeptEntryId": first_kept,
+                    "tokensBefore": tokens_before,
+                },
+            )
 
         return "\n\n".join(parts)
 

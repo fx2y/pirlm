@@ -175,6 +175,17 @@ def send_final(ok: bool, result: Mapping[str, Any]) -> None:
     write_frame(sys.stdout, frame)
 
 
+def send_custom(custom_type: str, data: JSONObject) -> None:
+    """C6.T01: Emit CustomEntry row"""
+    frame: JSONObject = {
+        "op": "custom",
+        "type": custom_type,
+        "data": data,
+        "ts": 0,
+    }
+    write_frame(sys.stdout, frame)
+
+
 def parse_ndjson_lines(lines: Iterable[str]) -> list[JSONObject]:
     frames: list[JSONObject] = []
     for idx, raw in enumerate(lines, start=1):
@@ -292,7 +303,7 @@ class StreamValidator:
             raise ProtocolError(f"frame exceeds max_line_bytes={self.max_line_bytes}")
 
         op = frame.get("op")
-        if op not in {"call", "result", "final"}:
+        if op not in {"call", "result", "final", "custom"}:
             raise ProtocolError(f"unknown op: {op!r}")
 
         if self.final_count > 0:
