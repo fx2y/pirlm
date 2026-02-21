@@ -69,7 +69,7 @@ export PIRML_MODEL_RAW='invalid'
 python -m scripts.compile --task 'smoke' --tools-dir tests/fixtures/toolsearch/catalog --out-dir out/compile-fail || true
 python -m scripts.schema_lint --final out/ci/final.json --contract out/compile-smoke/contract.json --compile-error out/compile-fail/compile_error.json
 python -m scripts.web_fixture_smoke
-python -m scripts.schema_lint --serp out/web_smoke/serp.ndjson --doc out/web_smoke/doc.ndjson --extract out/web_smoke/extract.ndjson --citation out/web_smoke/citation.ndjson --web-eval out/web_smoke/eval.ndjson
+python -m scripts.schema_lint --serp out/web_smoke/serp.ndjson --doc out/web_smoke/doc.ndjson --extract out/web_smoke/extract.ndjson --citation out/web_smoke/citation.ndjson --web-eval out/web_smoke/eval.ndjson --web-output out/web_smoke/web_output.json --web-trace out/web_smoke/web_trace.ndjson
 python -m scripts.tool_manifest_lint
 """
 
@@ -80,7 +80,7 @@ run = "python -m scripts.replay_check"
 [tasks.fast]
 description = "Inner loop gate (<3s target): lint + toolsearch + compile-lite"
 alias = ["f"]
-run = "ruff check pirml scripts tests && python -m unittest -q tests.test_toolsearch_lint tests.test_toolsearch_search tests.test_toolsearch_hydrate_render tests.test_toolsearch_bets tests.test_toolsearch_golden tests.test_compile_extract tests.test_compile_verify tests.test_compile_golden tests.test_urlnorm tests.test_web_search"
+run = "ruff check pirml scripts tests && python -m unittest -q tests.test_toolsearch_lint tests.test_toolsearch_search tests.test_toolsearch_hydrate_render tests.test_toolsearch_bets tests.test_toolsearch_golden tests.test_compile_extract tests.test_compile_verify tests.test_compile_golden tests.test_urlnorm tests.test_web_search tests.test_web_fetch_cache tests.test_web_eval tests.test_schema_lint"
 
 [tasks.ci]
 description = "Full deterministic fail-fast gate ladder"

@@ -8,7 +8,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from pirml.web.cache.sqlite import SqliteCache
-from pirml.web.fetch import CachedDocFetcher, RealDocFetcher
+from pirml.web.fetch import CachedDocFetcher, FetchConfig, RealDocFetcher
 from pirml.web.trace import WebTracer
 from pirml.web.types import DocRow
 
@@ -56,6 +56,24 @@ class WebFetchCacheTests(unittest.IsolatedAsyncioTestCase):
             # Let's assume it should return body as-is or similar but not crash.
             row = await fetcher.fetch("https://example.com/")
             self.assertIsNotNone(row["body"])
+
+    async def test_post_decompress_cap_is_enforced(self) -> None:
+        body = b"a" * 4000
+        compressed = gzip.compress(body)
+        with patch("pirml.web.fetch.urlopen") as mock_urlopen:
+            mock_resp = MagicMock()
+            mock_resp.status = 200
+            mock_resp.url = "https://example.com/"
+            mock_resp.getheaders.return_value = [
+                ("Content-Encoding", "gzip"),
+                ("Content-Type", "text/plain; charset=utf-8"),
+            ]
+            mock_resp.read.return_value = compressed
+            mock_resp.__enter__.return_value = mock_resp
+            mock_urlopen.return_value = mock_resp
+            fetcher = RealDocFetcher(FetchConfig(max_bytes=1000))
+            row = await fetcher.fetch("https://example.com/")
+            self.assertLessEqual(row["bytes"], 1000)
 
     async def test_cache_304_and_sha256_dedup(self) -> None:
         """C1.I4: Cache 304 reuse body and sha256 cross-URL deduplication."""
@@ -150,6 +168,39 @@ class WebFetchCacheTests(unittest.IsolatedAsyncioTestCase):
 
             with self.assertRaises(sqlite3.DatabaseError):
                 SqliteCache(db_path)
+
+    async def test_cache_body_sha_matches_stored_body_bytes(self) -> None:
+        class Cp1252Fetcher:
+            async def fetch(self, url: str, **kw: Any) -> DocRow:
+                text = "price €100"
+                return cast(
+                    DocRow,
+                    {
+                        "url": url,
+                        "final_url": url,
+                        "status": 200,
+                        "headers": {"content-type": "text/plain; charset=cp1252"},
+                        "content_type": "text/plain",
+                        "bytes": len(text),
+                        "encoding_guess": "cp1252",
+                        "body": text,
+                        "body_sha256": "0" * 64,
+                    },
+                )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cache = SqliteCache(Path(tmpdir) / "cache.db")
+            fetcher = CachedDocFetcher(Cp1252Fetcher(), cache=cache)  # type: ignore[arg-type]
+            row = await fetcher.fetch("https://example.com/price")
+            hit = cache.get("https://example.com/price")
+            assert hit is not None
+            import hashlib
+
+            self.assertEqual(
+                hashlib.sha256(hit["body"]).hexdigest(),
+                hit["body_sha256"],
+            )
+            self.assertEqual(row["body_sha256"], hit["body_sha256"])
 
 
 if __name__ == "__main__":

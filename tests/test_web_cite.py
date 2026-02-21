@@ -47,8 +47,8 @@ class WebCiteTests(unittest.TestCase):
     def test_citation_fails_on_missing_chunk(self) -> None:
         """C2.I3: Citation fail path with empty chunk list."""
         clock = SequenceClock(start=1_700_000_000)
-        citations = pack_citations([], clock=clock)
-        self.assertEqual(citations, [])
+        with self.assertRaises(ValueError):
+            pack_citations([], clock=clock)
 
 
 if __name__ == "__main__":

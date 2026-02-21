@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import collections
+import hashlib
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pirml.clock import SequenceClock
@@ -11,7 +15,7 @@ from .etl import fallback_extract, kill_boilerplate, select_top_chunks
 from .etl_join import join_chunks
 from .etl_score import score_bm25
 from .search import rank_and_diversify
-from .types import ChunkRow, CiteRow, WebFinal
+from .types import ChunkRow, CiteRow, SerpRow, WebFinal
 
 if TYPE_CHECKING:
     from .fetch import Fetcher
@@ -25,7 +29,8 @@ class WebPlan:
     cache: str
     max_chunks: int = 40
     per_domain_cap: int = 2
-    serp_k: int = 10
+    serp_k: int = 8
+    max_parallel_fetch: int = 4
 
 
 def project_final(*, answer: str, citations: list[CiteRow], trace_ptr: str) -> WebFinal:
@@ -40,12 +45,13 @@ class WebPipeline:
         fetcher: Fetcher,
         clock: SequenceClock,
         tracer: WebTracer | None = None,
+        trace_dir: Path = Path("out"),
     ):
         self.provider = provider
         self.fetcher = fetcher
         self.clock = clock
         self.tracer = tracer
-        self._global_boilerplate_cache: collections.Counter[str] = collections.Counter()
+        self.trace_dir = trace_dir
 
     async def run(self, query: str, plan: WebPlan) -> WebFinal:
         # 1. Search
@@ -53,42 +59,54 @@ class WebPipeline:
 
         # 2. Diversify
         selected_serp = rank_and_diversify(
-            serp, k=plan.serp_k, per_domain_cap=plan.per_domain_cap, tracer=self.tracer
+            serp, k=min(plan.serp_k, 8), per_domain_cap=plan.per_domain_cap, tracer=self.tracer
         )
 
-        # 3. Fetch + ETL
-        all_chunks: list[ChunkRow] = []
-        for i, row in enumerate(selected_serp):
-            try:
-                doc = await self.fetcher.fetch(row["url"], tracer=self.tracer)
-                if doc["status"] != 200:
-                    continue
+        # 3. Fetch + ETL (bounded parallel fanout; stable merge order)
+        semaphore = asyncio.Semaphore(max(plan.max_parallel_fetch, 1))
 
+        async def _fetch_extract(i: int, row: SerpRow) -> list[ChunkRow]:
+            row_url = row["url"]
+            try:
+                async with semaphore:
+                    doc = await self.fetcher.fetch(row_url, tracer=self.tracer)
+                if doc["status"] != 200:
+                    return []
                 # Winner B3b: robust text extraction
-                chunks = fallback_extract(
+                return fallback_extract(
                     doc["body"],
                     url=doc["url"],
                     doc_sha256=doc["body_sha256"],
                     source_rank=row["rank"],
                     doc_rank=i,
                 )
+            except Exception as exc:
+                if self.tracer is not None:
+                    self.tracer.emit(
+                        "fetch_result",
+                        url=row_url,
+                        status=0,
+                        error=str(exc),
+                        cache_hit=False,
+                    )
+                return []
 
-                all_chunks.extend(chunks)
-            except Exception:
-                continue
+        tasks = [_fetch_extract(i, row) for i, row in enumerate(selected_serp)]
+        batches = await asyncio.gather(*tasks)
+        all_chunks = [chunk for batch in batches for chunk in batch]
+        if selected_serp and not all_chunks:
+            raise ValueError("all selected SERP documents failed during fetch/extract")
 
         # 4. Global ETL
         # C2.T2: Boilerplate kill
-        import hashlib
-        import re
-
+        global_boilerplate_cache: collections.Counter[str] = collections.Counter()
         for c in all_chunks:
             clean = re.sub(r"\s+", " ", c["text"]).strip().lower()
             if len(clean) >= 20:
                 h = hashlib.sha256(clean.encode()).hexdigest()[:16]
-                self._global_boilerplate_cache[h] += 1
+                global_boilerplate_cache[h] += 1
 
-        filtered_chunks = kill_boilerplate(all_chunks, global_counts=self._global_boilerplate_cache)
+        filtered_chunks = kill_boilerplate(all_chunks, global_counts=global_boilerplate_cache)
 
         # Winner B4b: BM25 scoring
         filtered_chunks = score_bm25(filtered_chunks, query=query)
@@ -108,10 +126,13 @@ class WebPipeline:
         # Simple answer generation for now
         answer = " ".join([c["text"] for c in joined_chunks[:3]])
 
+        trace_ptr = str(self.trace_dir / "web_trace.ndjson")
+        if self.tracer is not None:
+            self.tracer.write_to(Path(trace_ptr))
         return project_final(
             answer=answer,
             citations=citations,
-            trace_ptr=f"web_trace_{self.clock.now()}.ndjson",
+            trace_ptr=trace_ptr,
         )
 
 

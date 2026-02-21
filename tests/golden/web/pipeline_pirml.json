@@ -9,5 +9,5 @@
       "url": "https://example.com/p"
     }
   ],
-  "trace_ptr": "web_trace_1700000001.ndjson"
+  "trace_ptr": "out/web_trace.ndjson"
 }

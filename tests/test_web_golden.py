@@ -36,7 +36,7 @@ class WebGoldenTests(unittest.IsolatedAsyncioTestCase):
             )
 
         expected_json = golden_path.read_text()
-        self.assertEqual(actual_json, expected_json, f"Golden drift for {name}")
+        self.assertEqual(actual_json, expected_json.rstrip("\n"), f"Golden drift for {name}")
 
     def test_extract_golden(self) -> None:
         """C4.T1: Golden artifact for extraction (robust text)."""
@@ -85,10 +85,7 @@ class WebGoldenTests(unittest.IsolatedAsyncioTestCase):
         )
         fetcher = FixtureDocFetcher(Path("tests/fixtures/web/responses.json"))
         # Map our test URL to an existing fixture URL
-        fixture_url = "https://example.com/docs/page?a=1&b=2"
-        fetcher._records["https://example.com/p"] = fetcher._records[  # type: ignore
-            fixture_url
-        ]
+        fetcher.add_alias("https://example.com/p", "https://example.com/docs/page?a=1&b=2")
 
         pipeline = WebPipeline(
             provider=provider, fetcher=fetcher, clock=self.clock, tracer=self.tracer

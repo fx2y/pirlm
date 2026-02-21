@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import time
 from pathlib import Path
 
 from .base import BaseCache, CacheHit, CacheRow
@@ -11,10 +10,16 @@ from .base import BaseCache, CacheHit, CacheRow
 class SqliteCache(BaseCache):
     def __init__(self, db_path: Path, timeout: float = 10.0) -> None:
         self._db_path = db_path
+        self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(db_path), timeout=timeout, isolation_level=None)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._stamp = 0
         self._create_table()
+
+    def _next_stamp(self) -> int:
+        self._stamp += 1
+        return self._stamp
 
     def _create_table(self) -> None:
         # metadata table: key -> sha256
@@ -80,8 +85,8 @@ class SqliteCache(BaseCache):
                 row["status"],
                 row["etag"],
                 row["last_modified"],
-                json.dumps(row["headers"]),
-                int(time.time()),
+                json.dumps(row["headers"], sort_keys=True, separators=(",", ":")),
+                self._next_stamp(),
             ),
         )
 
@@ -89,7 +94,7 @@ class SqliteCache(BaseCache):
         # Update metadata for existing entry
         self._conn.execute(
             "UPDATE http_meta SET etag = ?, last_modified = ?, fetched_at = ? WHERE key = ?",
-            (etag, last_modified, int(time.time()), key),
+            (etag, last_modified, self._next_stamp(), key),
         )
         return self.get(key)
 

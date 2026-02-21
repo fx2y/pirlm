@@ -5,7 +5,6 @@ import contextlib
 import gzip
 import hashlib
 import json
-import time
 import zlib
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,7 +79,6 @@ class RealDocFetcher:
     ) -> DocRow:
         if tracer:
             tracer.emit("fetch_call", url=url, cache_hit=False)
-        start_ms = int(time.time() * 1000)
         try:
             row = await asyncio.to_thread(
                 self._sync_fetch, url, etag=etag, last_modified=last_modified
@@ -92,7 +90,7 @@ class RealDocFetcher:
                     status=row["status"],
                     bytes=row["bytes"],
                     sha256=row["body_sha256"],
-                    ms=int(time.time() * 1000) - start_ms,
+                    ms=0,
                     cache_hit=False,
                 )
             return row
@@ -135,6 +133,7 @@ class RealDocFetcher:
         content_type = headers.get("content-type", "application/octet-stream").split(";")[0]
 
         if status == 304:
+            empty_sha = hashlib.sha256(b"").hexdigest()
             return {
                 "url": normalize_url(url),
                 "final_url": final_url,
@@ -144,7 +143,7 @@ class RealDocFetcher:
                 "bytes": 0,
                 "encoding_guess": "",
                 "body": "",
-                "body_sha256": "",
+                "body_sha256": empty_sha,
             }
 
         raw_body = resp.read(self._config.max_bytes + 1)
@@ -159,13 +158,16 @@ class RealDocFetcher:
         elif encoding == "deflate":
             with contextlib.suppress(zlib.error):
                 raw_body = zlib.decompress(raw_body)
+        if len(raw_body) > self._config.max_bytes:
+            raw_body = raw_body[: self._config.max_bytes]
 
         encoding_guess = ""
         if "charset=" in headers.get("content-type", "").lower():
             encoding_guess = headers["content-type"].lower().split("charset=")[-1].strip()
 
         body_text = _decode_body(raw_body, encoding_guess)
-        body_sha256 = hashlib.sha256(raw_body).hexdigest()
+        canonical_body = body_text.encode("utf-8")
+        body_sha256 = hashlib.sha256(canonical_body).hexdigest()
 
         return {
             "url": normalize_url(url),
@@ -173,7 +175,7 @@ class RealDocFetcher:
             "status": status,
             "headers": headers,
             "content_type": content_type,
-            "bytes": len(raw_body),
+            "bytes": len(canonical_body),
             "encoding_guess": encoding_guess,
             "body": body_text,
             "body_sha256": body_sha256,
@@ -219,6 +221,12 @@ class FixtureDocFetcher:
             records[normalize_url(row["url"])] = _FixturePayload(row=row, body=body)
         self._records = records
 
+    def add_alias(self, url: str, target_url: str) -> None:
+        target_key = normalize_url(target_url)
+        if target_key not in self._records:
+            raise KeyError(f"alias target missing: {target_key}")
+        self._records[normalize_url(url)] = self._records[target_key]
+
     async def fetch(
         self,
         url: str,
@@ -236,15 +244,16 @@ class FixtureDocFetcher:
             tracer.emit("fetch_call", url=key, cache_hit=False)
         # In fixture mode, we don't really support 304 unless we mock it in manifest
         # For now, just return 200
-        body_sha256 = hashlib.sha256(payload.body).hexdigest()
         body_text = _decode_body(payload.body, payload.row["encoding_guess"])
+        canonical_body = body_text.encode("utf-8")
+        body_sha256 = hashlib.sha256(canonical_body).hexdigest()
         row: DocRow = {
             "url": key,
             "final_url": normalize_url(payload.row["final_url"]),
             "status": payload.row["status"],
             "headers": dict(payload.row["headers"]),
             "content_type": payload.row["content_type"],
-            "bytes": len(payload.body),
+            "bytes": len(canonical_body),
             "encoding_guess": payload.row["encoding_guess"],
             "body": body_text,
             "body_sha256": body_sha256,
@@ -285,8 +294,6 @@ class CachedDocFetcher:
 
         if tracer:
             tracer.emit("fetch_call", url=key, cache_hit=hit is not None)
-
-        start_ms = int(time.time() * 1000)
         # Don't pass tracer to underlying fetcher to avoid duplicate frames
         row = await self._fetcher.fetch(
             url, etag=effective_etag, last_modified=effective_last_mod, tracer=None
@@ -306,7 +313,7 @@ class CachedDocFetcher:
                         bytes=len(updated["body"]),
                         sha256=updated["body_sha256"],
                         cache_hit=True,
-                        ms=int(time.time() * 1000) - start_ms,
+                        ms=0,
                     )
                 return {
                     "url": key,
@@ -321,17 +328,21 @@ class CachedDocFetcher:
                 }
 
         if row["status"] == 200:
+            body_bytes = row["body"].encode("utf-8")
+            body_sha256 = hashlib.sha256(body_bytes).hexdigest()
             self._cache.put(
                 {
                     "key": key,
-                    "body_sha256": row["body_sha256"],
-                    "body": row["body"].encode("utf-8"),
+                    "body_sha256": body_sha256,
+                    "body": body_bytes,
                     "status": 200,
                     "etag": row["headers"].get("etag"),
                     "last_modified": row["headers"].get("last-modified"),
                     "headers": row["headers"],
                 }
             )
+            row["body_sha256"] = body_sha256
+            row["bytes"] = len(body_bytes)
             if tracer:
                 tracer.emit(
                     "fetch_result",
@@ -340,7 +351,7 @@ class CachedDocFetcher:
                     bytes=row["bytes"],
                     sha256=row["body_sha256"],
                     cache_hit=False,
-                    ms=int(time.time() * 1000) - start_ms,
+                    ms=0,
                 )
 
         return row

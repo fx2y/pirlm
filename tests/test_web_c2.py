@@ -177,9 +177,7 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
 
         # Fixture fetcher
         fetcher = FixtureDocFetcher(Path("tests/fixtures/web/responses.json"))
-        fetcher._records["https://example.com/p"] = fetcher._records[  # type: ignore
-            "https://example.com/docs/page?a=1&b=2"
-        ]
+        fetcher.add_alias("https://example.com/p", "https://example.com/docs/page?a=1&b=2")
 
         pipeline = WebPipeline(
             provider=provider, fetcher=fetcher, clock=self.clock, tracer=self.tracer
@@ -190,6 +188,7 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
         result = await pipeline.run("what is pirml?", plan)
         self.assertTrue(len(result["citations"]) > 0)
         self.assertIn("Deterministic Fixture", result["answer"])
+        self.assertTrue(Path(result["trace_ptr"]).exists())
 
         # Golden verification
         golden_path = Path("tests/golden/web/pipeline_result.json")
@@ -200,7 +199,7 @@ class WebC2Tests(unittest.IsolatedAsyncioTestCase):
 
         if golden_path.exists():
             expected_json = golden_path.read_text()
-            self.assertEqual(actual_json, expected_json)
+            self.assertEqual(actual_json, expected_json.rstrip("\n"))
 
 
 if __name__ == "__main__":

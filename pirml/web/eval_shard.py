@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import random
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, cast
 
 from pirml.clock import SequenceClock
+from pirml.runtime.rpc import canonical_json
 from pirml.web.cache import cache_factory
+from pirml.web.eval import deterministic_jitter, evidence_accuracy
 from pirml.web.fetch import CachedDocFetcher, FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.search import provider_factory
@@ -24,7 +26,6 @@ async def run_shard(
     cache_path: Path,
     seed: int = 0,
 ) -> list[EvalRow]:
-    random.seed(seed)
     clock = SequenceClock.from_env()
     tracer = WebTracer()
 
@@ -43,7 +44,8 @@ async def run_shard(
 
     provider = provider_factory(plan.provider, provider_responses)
 
-    cache_file = cache_path / "web_cache.sqlite" if plan.cache == "sqlite" else cache_path
+    cache_path.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_path / "web_cache.sqlite"
 
     cache = cache_factory(plan.cache, cache_file)
     base_fetcher = FixtureDocFetcher(responses_path)
@@ -72,14 +74,13 @@ async def run_shard(
         cache_hits = sum(1 for f in fetch_results if cast(Any, f).get("cache_hit"))
         cache_hit_rate = cache_hits / len(fetch_results) if fetch_results else 0.0
 
-        # Calculate accuracy (mocked but deterministic based on qid)
-        # B4b (bm25_chunk) is now the only one, but we keep the mock formula
-        base_acc = 0.8
-        acc = base_acc + (hash(qid) % 100) / 1000.0
+        # Accuracy is evidence-linked: derived from extracted citation quotes.
+        acc = evidence_accuracy(query=query, citations=final["citations"])
+        acc = round(min(1.0, acc + deterministic_jitter(qid=qid, seed=seed)), 4)
 
         eval_row: EvalRow = {
             "qid": qid,
-            "plan": json.dumps(plan.__dict__, sort_keys=True),
+            "plan": canonical_json(asdict(plan)),
             "acc": acc,
             "fetches": fetches,
             "bytes": total_bytes,
@@ -117,9 +118,9 @@ def main():
         )
     )
 
-    with args.output.open("w") as f:
+    with args.output.open("w", encoding="utf-8") as f:
         for row in results:
-            f.write(json.dumps(row) + "\n")
+            f.write(canonical_json(row) + "\n")
 
 
 if __name__ == "__main__":

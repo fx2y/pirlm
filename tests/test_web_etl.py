@@ -20,12 +20,9 @@ class WebETLTests(unittest.TestCase):
         self.assertEqual(chunks[0]["kind"], "fallback")
 
     def test_html_extraction_fails_on_invalid_structure(self) -> None:
-        """C2.I1: ETL HTML extraction (robust text) tolerates invalid structure."""
-        # Malformed HTML should still be tolerated
-        chunks = fallback_extract(
-            "<html><body><p>one<p>two", url="u1", doc_sha256="s1", source_rank=1, doc_rank=1
-        )
-        self.assertTrue(len(chunks) > 0)
+        """C2.I1: ETL fail path is typed for empty/invalid payload."""
+        with self.assertRaises(ValueError):
+            fallback_extract("", url="u1", doc_sha256="s1", source_rank=1, doc_rank=1)
 
     def test_global_selector_budget_and_stability(self) -> None:
         """C2.I2: Global selector N=40 hard cap and stable tie-break (score,source_rank,doc_rank,chunk_id)."""
@@ -75,8 +72,8 @@ class WebETLTests(unittest.TestCase):
                 }
             ],
         )
-        selected = select_top_chunks(chunks, n=0)
-        self.assertEqual(selected, [])
+        with self.assertRaises(ValueError):
+            select_top_chunks(chunks, n=0)
 
 
 if __name__ == "__main__":

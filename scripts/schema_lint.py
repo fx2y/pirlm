@@ -388,6 +388,87 @@ def validate_web_eval_row(row: Any, index: int) -> list[str]:
     return errors
 
 
+def validate_web_trace_row(row: Any, index: int) -> list[str]:
+    path = f"rows[{index}]"
+    if not isinstance(row, dict):
+        return [f"{path} must be an object"]
+    errors: list[str] = []
+    allowed = {
+        "op",
+        "ts",
+        "seq",
+        "ms",
+        "q",
+        "url",
+        "provider",
+        "status",
+        "bytes",
+        "sha256",
+        "cache_hit",
+        "error",
+    }
+    required = {"op", "ts", "seq", "ms"}
+    for req in required:
+        if req not in row:
+            errors.append(f"{path} missing required '{req}'")
+    for key in cast(Mapping[str, Any], row):
+        if key not in allowed:
+            errors.append(f"{path} has unexpected field '{key}'")
+    valid_ops = {"search_call", "search_result", "fetch_call", "fetch_result"}
+    if "op" in row and row["op"] not in valid_ops:
+        errors.append(f"{path}.op must be one of {sorted(valid_ops)}")
+    if "ts" in row and not _is_int(row["ts"]):
+        errors.append(f"{path}.ts must be an integer")
+    if "seq" in row and not _is_int(row["seq"]):
+        errors.append(f"{path}.seq must be an integer")
+    if "ms" in row and not _is_int(row["ms"]):
+        errors.append(f"{path}.ms must be an integer")
+    if "url" in row and not isinstance(row["url"], str):
+        errors.append(f"{path}.url must be a string")
+    if "q" in row and not isinstance(row["q"], str):
+        errors.append(f"{path}.q must be a string")
+    if "provider" in row and not isinstance(row["provider"], str):
+        errors.append(f"{path}.provider must be a string")
+    if "status" in row and not _is_int(row["status"]):
+        errors.append(f"{path}.status must be an integer")
+    if "bytes" in row and not _is_int(row["bytes"]):
+        errors.append(f"{path}.bytes must be an integer")
+    if "sha256" in row and not _has_sha256(row["sha256"]):
+        errors.append(f"{path}.sha256 must be a 64-char lower-hex digest")
+    if "cache_hit" in row and not isinstance(row["cache_hit"], bool):
+        errors.append(f"{path}.cache_hit must be a boolean")
+    if "error" in row and not isinstance(row["error"], str):
+        errors.append(f"{path}.error must be a string")
+    return errors
+
+
+def validate_web_output(payload: Any, path: str) -> list[str]:
+    errors: list[str] = []
+    if not isinstance(payload, dict):
+        return [f"{path} must be an object"]
+    allowed = {"answer", "citations", "trace_ptr"}
+    required = allowed
+    payload_map = cast(dict[str, Any], payload)
+    for req in required:
+        if req not in payload_map:
+            errors.append(f"{path} missing required '{req}'")
+    for key in payload_map:
+        if key not in allowed:
+            errors.append(f"{path} has unexpected field '{key}'")
+    if "answer" in payload_map and not isinstance(payload_map["answer"], str):
+        errors.append(f"{path}.answer must be a string")
+    if "trace_ptr" in payload_map and not isinstance(payload_map["trace_ptr"], str):
+        errors.append(f"{path}.trace_ptr must be a string")
+    if "citations" in payload_map:
+        citations = payload_map["citations"]
+        if not isinstance(citations, list):
+            errors.append(f"{path}.citations must be a list")
+        else:
+            for i, citation in enumerate(cast(list[Any], citations)):
+                errors.extend(validate_citation_row(citation, i))
+    return errors
+
+
 def _validate_json_artifacts(
     *,
     paths: list[Path] | None,
@@ -480,6 +561,10 @@ def main() -> int:
     parser.add_argument(
         "--web-eval", action="append", type=Path, help="Path(s) to web eval artifacts"
     )
+    parser.add_argument(
+        "--web-trace", action="append", type=Path, help="Path(s) to web trace artifacts"
+    )
+    parser.add_argument("--web-output", type=Path, help="Path to web output artifact")
 
     args = parser.parse_args()
     if not any(
@@ -492,11 +577,16 @@ def main() -> int:
             args.extract,
             args.citation,
             args.web_eval,
+            args.web_trace,
+            args.web_output,
         )
     ):
         print(
             "Error: pass at least one artifact path "
-            "(--final/--contract/--compile-error/--serp/--doc/--extract/--citation/--web-eval)",
+            "("
+            "--final/--contract/--compile-error/--serp/--doc/--extract/--citation/"
+            "--web-eval/--web-trace/--web-output"
+            ")",
             file=sys.stderr,
         )
         return 1
@@ -589,6 +679,44 @@ def main() -> int:
             validate_row=validate_web_eval_row,
         ),
     )
+    exit_code = max(
+        exit_code,
+        _validate_row_artifacts(
+            paths=args.web_trace,
+            missing_label="web-trace",
+            validate_row=validate_web_trace_row,
+        ),
+    )
+    exit_code = max(
+        exit_code,
+        _validate_json_artifacts(
+            paths=[args.web_output] if args.web_output else None,
+            missing_label="web-output",
+            validate=validate_web_output,
+        ),
+    )
+    if args.web_output and args.web_output.exists():
+        try:
+            payload = json.loads(args.web_output.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            payload = None
+        if isinstance(payload, dict):
+            payload_map = cast(dict[str, Any], payload)
+            trace_ptr = payload_map.get("trace_ptr")
+            if isinstance(trace_ptr, str):
+                ptr_path = Path(trace_ptr)
+                if not ptr_path.exists():
+                    print(
+                        f"Error: web_output.trace_ptr target missing: {ptr_path}",
+                        file=sys.stderr,
+                    )
+                    exit_code = 1
+                if args.web_trace and ptr_path not in args.web_trace:
+                    print(
+                        f"Error: web_output.trace_ptr {ptr_path} not listed in --web-trace args",
+                        file=sys.stderr,
+                    )
+                    exit_code = 1
 
     return exit_code
 

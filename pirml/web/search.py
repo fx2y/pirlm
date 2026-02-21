@@ -86,10 +86,16 @@ class SearxJsonProvider:
 
 
 def provider_factory(kind: str, responses: dict[str, list[SerpRow]]) -> Provider:
-    # B1a is the winner, or mock for testing
+    # B1 winner is searx_json; keep explicit mock hook for deterministic tests.
     if kind == "searx_json":
         return SearxJsonProvider(responses)
-    return MockProvider(responses)
+    if kind == "mock":
+        return MockProvider(responses)
+    if kind == "vendor_http":
+        raise ValueError(
+            "provider variant B1b/vendor_http is not supported in winner-locked runtime"
+        )
+    raise ValueError(f"unknown provider kind: {kind}")
 
 
 __all__ = [

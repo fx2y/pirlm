@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+from pirml.web.eval import evidence_accuracy
+from pirml.web.eval_shard import run_shard
 from pirml.web.pipeline import WebPlan
 
 
@@ -18,6 +22,18 @@ class WebEvalTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TypeError):
             # Missing required field
             WebPlan(provider="mock")  # type: ignore
+
+    def test_resolve_plan_rejects_unsupported_variants(self) -> None:
+        from scripts.web_eval import resolve_plan
+
+        with self.assertRaises(ValueError):
+            resolve_plan("(B1a,B2b,B3a,B4a,B5b)")
+
+    def test_resolve_plan_rejects_invalid_shape(self) -> None:
+        from scripts.web_eval import resolve_plan
+
+        with self.assertRaises(ValueError):
+            resolve_plan("B1a,B2a,B3b,B4b,B5a")
 
     def test_winner_selection_is_deterministic(self) -> None:
         """C3.I2: Winner selection is deterministic lexicographic max on (acc, -bytes, -chunks, -fetches, cache_hit)."""
@@ -62,6 +78,46 @@ class WebEvalTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaises(ValueError):
             select_winner([])
+
+    async def test_eval_shard_creates_cache_dir(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cache_dir = Path(tmp) / "nested" / "cache"
+            rows = await run_shard(
+                queries=[{"qid": "Q1", "query": "pirml"}],
+                plan=WebPlan(provider="mock", cache="sqlite"),
+                responses_path=Path("tests/fixtures/web/responses.json"),
+                cache_path=cache_dir,
+                seed=0,
+            )
+            self.assertEqual(len(rows), 1)
+            self.assertTrue((cache_dir / "web_cache.sqlite").exists())
+
+    def test_evidence_accuracy_depends_on_citations(self) -> None:
+        low = evidence_accuracy(
+            query="pirml deterministic fixture",
+            citations=[
+                {
+                    "url": "u",
+                    "doc_sha256": "a" * 64,
+                    "chunk_id": "c1",
+                    "quote": "unrelated text",
+                    "retrieved_at": 1,
+                }
+            ],
+        )
+        high = evidence_accuracy(
+            query="pirml deterministic fixture",
+            citations=[
+                {
+                    "url": "u",
+                    "doc_sha256": "a" * 64,
+                    "chunk_id": "c1",
+                    "quote": "PIRML deterministic fixture evidence.",
+                    "retrieved_at": 1,
+                }
+            ],
+        )
+        self.assertGreater(high, low)
 
 
 if __name__ == "__main__":

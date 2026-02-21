@@ -65,6 +65,8 @@ def pack_citations(
     clock: SequenceClock,
     query: str = "",
 ) -> list[CiteRow]:
+    if not chunks:
+        raise ValueError("chunks must be non-empty")
     query_hints = re.findall(r"\w+", query.lower()) if query else []
     results: list[CiteRow] = []
     for chunk in chunks:

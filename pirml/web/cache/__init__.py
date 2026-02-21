@@ -7,7 +7,9 @@ from .sqlite import SqliteCache
 
 
 def cache_factory(kind: str, path: Path) -> BaseCache:
-    # B2a is the winner, sqlite only
+    # B2a winner is sqlite; reject silent fallback.
+    if kind != "sqlite":
+        raise ValueError(f"unsupported cache backend: {kind}")
     return SqliteCache(path)
 
 

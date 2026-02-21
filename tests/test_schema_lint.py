@@ -64,6 +64,8 @@ class TestSchemaLintCLI(unittest.TestCase):
             extract = root / "extract.ndjson"
             citation = root / "citation.ndjson"
             web_eval = root / "eval.ndjson"
+            web_trace = root / "web_trace.ndjson"
+            web_output = root / "web_output.json"
 
             serp.write_text(
                 json.dumps(
@@ -140,6 +142,38 @@ class TestSchemaLintCLI(unittest.TestCase):
                 + "\n",
                 encoding="utf-8",
             )
+            web_trace.write_text(
+                json.dumps(
+                    {
+                        "op": "search_call",
+                        "ts": 0,
+                        "seq": 1,
+                        "ms": 0,
+                        "q": "pirml",
+                        "provider": "mock",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            web_output.write_text(
+                json.dumps(
+                    {
+                        "answer": "ok",
+                        "citations": [
+                            {
+                                "url": "https://example.com",
+                                "doc_sha256": "a" * 64,
+                                "chunk_id": "chunk-1",
+                                "quote": "ok",
+                                "retrieved_at": 1700000000,
+                            }
+                        ],
+                        "trace_ptr": str(web_trace),
+                    }
+                ),
+                encoding="utf-8",
+            )
 
             completed = self._run(
                 "--serp",
@@ -152,6 +186,10 @@ class TestSchemaLintCLI(unittest.TestCase):
                 str(citation),
                 "--web-eval",
                 str(web_eval),
+                "--web-trace",
+                str(web_trace),
+                "--web-output",
+                str(web_output),
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from typing import cast
 
-from pirml.web.search import MockProvider, rank_and_diversify
+from pirml.web.search import MockProvider, provider_factory, rank_and_diversify
 from pirml.web.types import SerpRow
 
 
@@ -86,6 +86,10 @@ class WebSearchTests(unittest.IsolatedAsyncioTestCase):
         provider = MockProvider({})
         results = await provider.search("q2")
         self.assertEqual(results, [])
+
+    def test_provider_factory_unknown_fails_closed(self) -> None:
+        with self.assertRaises(ValueError):
+            provider_factory("unknown", {})
 
 
 if __name__ == "__main__":

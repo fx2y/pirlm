@@ -1,8 +1,8 @@
 import asyncio
-import json
 from pathlib import Path
 
 from pirml.clock import SequenceClock
+from pirml.runtime.rpc import canonical_json
 from pirml.web.fetch import FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.search import MockProvider
@@ -28,15 +28,18 @@ async def main():
     )
     responses_path = Path("tests/fixtures/web/responses.json")
     fetcher = FixtureDocFetcher(responses_path)
-    # Map test URL
-    fetcher._records["https://example.com/p"] = fetcher._records[  # type: ignore
-        "https://example.com/docs/page?a=1&b=2"
-    ]
+    fetcher.add_alias("https://example.com/p", "https://example.com/docs/page?a=1&b=2")
 
     clock = SequenceClock(start=1_700_000_000)
     tracer = WebTracer()
 
-    pipeline = WebPipeline(provider=provider, fetcher=fetcher, clock=clock, tracer=tracer)
+    pipeline = WebPipeline(
+        provider=provider,
+        fetcher=fetcher,
+        clock=clock,
+        tracer=tracer,
+        trace_dir=out_dir,
+    )
     plan = WebPlan(
         provider="mock",
         cache="memory",
@@ -45,7 +48,7 @@ async def main():
     result = await pipeline.run("pirml", plan)
 
     # Write artifacts to out_dir
-    (out_dir / "final.json").write_text(json.dumps(result, indent=2))
+    (out_dir / "web_output.json").write_text(canonical_json(result), encoding="utf-8")
 
     serp = [
         {
@@ -56,9 +59,9 @@ async def main():
             "source": "test",
         }
     ]
-    with (out_dir / "serp.ndjson").open("w") as f:
+    with (out_dir / "serp.ndjson").open("w", encoding="utf-8") as f:
         for s in serp:
-            f.write(json.dumps(s) + "\n")
+            f.write(canonical_json(s) + "\n")
 
     doc = {
         "url": "https://example.com/p",
@@ -71,8 +74,8 @@ async def main():
         "body": "<html><body>ok</body></html>",
         "body_sha256": "a" * 64,
     }
-    with (out_dir / "doc.ndjson").open("w") as f:
-        f.write(json.dumps(doc) + "\n")
+    with (out_dir / "doc.ndjson").open("w", encoding="utf-8") as f:
+        f.write(canonical_json(doc) + "\n")
 
     extract = {
         "doc_sha256": "a" * 64,
@@ -85,12 +88,12 @@ async def main():
         "source_rank": 1,
         "doc_rank": 1,
     }
-    with (out_dir / "extract.ndjson").open("w") as f:
-        f.write(json.dumps(extract) + "\n")
+    with (out_dir / "extract.ndjson").open("w", encoding="utf-8") as f:
+        f.write(canonical_json(extract) + "\n")
 
-    with (out_dir / "citation.ndjson").open("w") as f:
+    with (out_dir / "citation.ndjson").open("w", encoding="utf-8") as f:
         for c in result["citations"]:
-            f.write(json.dumps(c) + "\n")
+            f.write(canonical_json(c) + "\n")
 
     # Web Eval
     eval_row = {
@@ -102,8 +105,8 @@ async def main():
         "chunks": 1,
         "cache_hit": 0.0,
     }
-    with (out_dir / "eval.ndjson").open("w") as f:
-        f.write(json.dumps(eval_row) + "\n")
+    with (out_dir / "eval.ndjson").open("w", encoding="utf-8") as f:
+        f.write(canonical_json(eval_row) + "\n")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
@@ -23,21 +22,19 @@ class WebTraceFrame(TypedDict, total=False):
 
 class WebTracer:
     def __init__(self, start_ts: int | None = None) -> None:
-        self._start_ts = start_ts or int(time.time() * 1000)
+        self._start_ts = 0 if start_ts is None else start_ts
         self._seq = 1
         self._frames: list[WebTraceFrame] = []
 
-    def _now_ms(self) -> int:
-        return int(time.time() * 1000) - self._start_ts
-
     def emit(self, op: str, **kwargs: Any) -> None:
+        ms = self._seq - 1
         frame: WebTraceFrame = cast(
             WebTraceFrame,
             {
                 "op": op,
-                "ts": int(time.time()),
+                "ts": self._start_ts + ms,
                 "seq": self._seq,
-                "ms": self._now_ms(),
+                "ms": ms,
                 **kwargs,
             },
         )

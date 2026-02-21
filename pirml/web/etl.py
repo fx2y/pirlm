@@ -23,6 +23,12 @@ def stable_chunk_sort(chunks: list[ChunkRow]) -> list[ChunkRow]:
 def fallback_extract(
     html: str, *, url: str, doc_sha256: str, source_rank: int, doc_rank: int
 ) -> list[ChunkRow]:
+    if not html.strip():
+        raise ValueError("html must be non-empty")
+    if not url:
+        raise ValueError("url must be non-empty")
+    if not doc_sha256:
+        raise ValueError("doc_sha256 must be non-empty")
     # B3b fallback: strip tags + windowed regex
     # Simplified: regex-based sentence/paragraph extraction
     text = re.sub(r"<[^>]+>", " ", html)
@@ -80,6 +86,8 @@ def kill_boilerplate(
 
 def select_top_chunks(chunks: list[ChunkRow], *, n: int = 40) -> list[ChunkRow]:
     # C2.T5: Global selector
+    if n <= 0:
+        raise ValueError("n must be > 0")
     sorted_chunks = stable_chunk_sort(chunks)
     return sorted_chunks[:n]
 
