@@ -17,6 +17,18 @@ class ArtifactStore:
         self._index = ArtifactsIndex(self._layout.index_path)
         self._trace = ArtifactTraceWriter(self._layout.trace_path)
 
+    @property
+    def layout(self) -> ArtifactLayout:
+        return self._layout
+
+    @property
+    def index(self) -> ArtifactsIndex:
+        return self._index
+
+    @property
+    def trace(self) -> ArtifactTraceWriter:
+        return self._trace
+
     def put_raw(
         self,
         data: bytes,
@@ -63,6 +75,7 @@ class ArtifactStore:
             parents=parents or [],
             src=src or {},
             notes=notes,
+            ts=ts,
         )
 
         return sha
@@ -86,6 +99,48 @@ class ArtifactStore:
             src=src,
             notes=notes,
         )
+
+    def put_view(
+        self,
+        vid: str,
+        aid: str,
+        spec: Any,  # SliceSpec
+        data: bytes,
+        stats: dict[str, Any],
+    ) -> str:
+        """C2.T06: Link each view materialization into ArtifactFS index + trace events"""
+        path = self._layout.views_dir / f"{vid}.ndjson"
+        atomic_write(path, data)
+
+        ts = self._trace.clock.now()
+        rel_path = str(path.relative_to(self._layout.root))
+        view_sha = sha256_bytes(data)
+
+        rec: ArtifactRecord = {
+            "id": vid,
+            "kind": "slice",
+            "mime": "application/x-ndjson",
+            "bytes": len(data),
+            "sha256": view_sha,
+            "path": rel_path,
+            "parents": [aid],
+            "src": {"vid": vid, "aid": aid, "spec": spec, "stats": stats},
+            "ts": ts,
+            "notes": f"View {vid} for {aid}",
+        }
+        self._index.put(rec)
+
+        self._trace.append(
+            ev="view",
+            aid=aid,
+            vid=vid,
+            spec=spec,
+            stats=stats,
+            sha256=view_sha,
+            path=rel_path,
+            ts=ts,
+        )
+        return vid
 
     def get_bytes(self, aid: str) -> bytes:
         """C1.T06: Retrieve artifact bytes by id"""

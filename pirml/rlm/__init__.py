@@ -1,5 +1,18 @@
 from __future__ import annotations
 
-from .errors import RlmErrorType, RlmTypedError, rlm_error
+from .api import run_rlm
+from .errors import RlmKernelError
+from .history import RlmHistory
+from .kernel import RlmKernel, RlmState
+from .types import RlmBudget, RlmErrorType, RlmHistoryFrame
 
-__all__ = ["RlmErrorType", "RlmTypedError", "rlm_error"]
+__all__ = [
+    "run_rlm",
+    "RlmKernel",
+    "RlmState",
+    "RlmHistory",
+    "RlmHistoryFrame",
+    "RlmBudget",
+    "RlmErrorType",
+    "RlmKernelError",
+]

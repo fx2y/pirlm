@@ -10,6 +10,7 @@ class ArtifactErrorType(StrEnum):
     NOT_FOUND = "artifact_not_found"
     ALREADY_EXISTS = "artifact_already_exists"
     VIEW_SPEC_INVALID = "view_spec_invalid"
+    VIEW_OP_UNSUPPORTED = "view_op_unsupported"
     INTEGRITY = "artifact_integrity_error"
 
 

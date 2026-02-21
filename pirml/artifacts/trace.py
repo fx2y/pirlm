@@ -18,12 +18,14 @@ class ArtifactTraceWriter:
     def clock(self) -> SequenceClock:
         return self._clock
 
-    def append(self, ev: str, aid: str | None = None, **payload: Any) -> None:
+    def append(
+        self, ev: str, aid: str | None = None, ts: int | None = None, **payload: Any
+    ) -> None:
         """C1.T05: Append-only trace with canonical NDJSON"""
         frame = {
             "id": f"c{self._seq:05d}",
             "seq": self._seq,
-            "ts": self._clock.now(),
+            "ts": ts if ts is not None else self._clock.now(),
             "ev": ev,
         }
         if aid:

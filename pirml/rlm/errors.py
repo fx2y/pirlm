@@ -1,20 +1,6 @@
 from __future__ import annotations
 
-from enum import StrEnum
-from typing import TypedDict
-
-
-class RlmErrorType(StrEnum):
-    MISSING_FINAL = "rlm_missing_final"
-    BUDGET_EXCEEDED = "rlm_budget_exceeded"
-    CONTEXT_CAP_EXCEEDED = "rlm_context_cap_exceeded"
-    UNSUPPORTED_VARIANT = "rlm_unsupported_variant"
-
-
-class RlmTypedError(TypedDict):
-    type: str
-    msg: str
-    retryable: bool
+from .types import RlmErrorType, RlmTypedError
 
 
 def rlm_error(
@@ -24,3 +10,19 @@ def rlm_error(
     retryable: bool = False,
 ) -> RlmTypedError:
     return {"type": str(error_type), "msg": msg, "retryable": retryable}
+
+
+class RlmKernelError(ValueError):
+    def __init__(
+        self,
+        *,
+        error_type: RlmErrorType,
+        msg: str,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(msg)
+        self.error: RlmTypedError = rlm_error(
+            error_type=error_type,
+            msg=msg,
+            retryable=retryable,
+        )

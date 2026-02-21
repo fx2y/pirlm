@@ -100,6 +100,10 @@ class ArtifactsIndex:
         row = self._conn.execute("SELECT path FROM artifacts WHERE id = ?", (aid,)).fetchone()
         return row[0] if row else None
 
+    def get_kind(self, aid: str) -> str | None:
+        row = self._conn.execute("SELECT kind FROM artifacts WHERE id = ?", (aid,)).fetchone()
+        return row[0] if row else None
+
     def resolve_parents(self, aid: str) -> list[str]:
         rows = self._conn.execute(
             "SELECT parent FROM parents WHERE child = ? ORDER BY pos", (aid,)

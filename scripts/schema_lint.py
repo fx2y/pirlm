@@ -442,6 +442,31 @@ def validate_web_trace_row(row: Any, index: int) -> list[str]:
     return errors
 
 
+def validate_view_row(row: Any, index: int) -> list[str]:
+    path = f"rows[{index}]"
+    if not isinstance(row, dict):
+        return [f"{path} must be an object"]
+    errors: list[str] = []
+
+    if "text" not in row:
+        errors.append(f"{path} missing required 'text'")
+    elif not isinstance(row["text"], str):
+        errors.append(f"{path}.text must be a string")
+
+    if "line" not in row and "offset" not in row:
+        errors.append(f"{path} missing required 'line' or 'offset'")
+
+    if "line" in row and not _is_int(row["line"]):
+        errors.append(f"{path}.line must be an integer")
+    if "offset" in row and not _is_int(row["offset"]):
+        errors.append(f"{path}.offset must be an integer")
+
+    if "score" in row and not _is_number(row["score"]):
+        errors.append(f"{path}.score must be numeric")
+
+    return errors
+
+
 def validate_web_output(payload: Any, path: str) -> list[str]:
     errors: list[str] = []
     if not isinstance(payload, dict):
@@ -630,6 +655,7 @@ def main() -> int:
     parser.add_argument(
         "--artifact-trace", action="append", type=Path, help="Path(s) to artifact trace artifacts"
     )
+    parser.add_argument("--view", action="append", type=Path, help="Path(s) to view artifacts")
 
     args = parser.parse_args()
     if not any(
@@ -646,13 +672,14 @@ def main() -> int:
             args.web_output,
             args.artifact,
             args.artifact_trace,
+            args.view,
         )
     ):
         print(
             "Error: pass at least one artifact path "
             "("
             "--final/--contract/--compile-error/--serp/--doc/--extract/--citation/"
-            "--web-eval/--web-trace/--web-output/--artifact/--artifact-trace"
+            "--web-eval/--web-trace/--web-output/--artifact/--artifact-trace/--view"
             ")",
             file=sys.stderr,
         )
@@ -776,6 +803,14 @@ def main() -> int:
             paths=args.artifact_trace,
             missing_label="artifact-trace",
             validate_row=validate_artifact_trace_row,
+        ),
+    )
+    exit_code = max(
+        exit_code,
+        _validate_row_artifacts(
+            paths=args.view,
+            missing_label="view",
+            validate_row=validate_view_row,
         ),
     )
     if args.web_output and args.web_output.exists():

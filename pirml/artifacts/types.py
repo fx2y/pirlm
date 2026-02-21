@@ -17,6 +17,10 @@ class ArtifactSource(TypedDict, total=False):
     tool: str
     url: str
     params: dict[str, Any]
+    vid: str
+    aid: str
+    spec: Any
+    stats: dict[str, Any]
 
 
 class ArtifactRecord(TypedDict):
