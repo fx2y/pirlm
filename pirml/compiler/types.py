@@ -30,11 +30,31 @@ class ContractBudget(TypedDict):
     timeout_s: int
 
 
-class CompileContract(TypedDict):
+class ContractRetryPolicy(TypedDict):
+    n: int
+
+
+class ContractToolPolicy(TypedDict, total=False):
+    idempotent: bool
+    cacheable: bool
+    max_payload_bytes: int
+    timeout_s: float
+    retry: ContractRetryPolicy
+
+
+class ContractTimeouts(TypedDict, total=False):
+    default_s: float
+    tool_overrides: dict[str, float]
+
+
+class CompileContract(TypedDict, total=False):
     tool_deps: list[str]
     io_schema: dict[str, Any]
     budgets: ContractBudget
     assertions: list[str]
+    artifact_writes: list[str]
+    tool_policies: dict[str, ContractToolPolicy]
+    timeouts: ContractTimeouts
 
 
 class CompileArtifacts(TypedDict):

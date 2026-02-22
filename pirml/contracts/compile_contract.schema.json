@@ -34,6 +34,48 @@
     "assertions": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "artifact_writes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "tool_policies": {
+      "type": "object",
+      "patternProperties": {
+        "^.+$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "idempotent": { "type": "boolean" },
+            "cacheable": { "type": "boolean" },
+            "max_payload_bytes": { "type": "integer", "minimum": 1 },
+            "timeout_s": { "type": "number", "exclusiveMinimum": 0 },
+            "retry": {
+              "type": "object",
+              "required": ["n"],
+              "additionalProperties": false,
+              "properties": {
+                "n": { "type": "integer", "minimum": 0 }
+              }
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default_s": { "type": "number", "exclusiveMinimum": 0 },
+        "tool_overrides": {
+          "type": "object",
+          "patternProperties": {
+            "^.+$": { "type": "number", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      }
     }
   }
 }

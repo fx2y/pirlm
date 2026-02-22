@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pirml.compiler.types import CompileContract, VerificationError
+from pirml.runtime.policy import parse_runtime_policy_set
 
 # S.AST1: Import allowlist
 ALLOW_IMPORTS = {
@@ -203,6 +204,31 @@ class CompileVerifier:
         assertions = data["assertions"]
         if not isinstance(assertions, list):
             self.add_error("invalid_assertions", "assertions must be a list")
+
+        declared_tools: set[str] | None = None
+        if isinstance(deps, list):
+            declared_tools = set()
+            for item in cast(list[Any], deps):
+                if isinstance(item, str):
+                    declared_tools.add(item)
+        budget_max_bytes_out: int | None = None
+        if isinstance(b, dict):
+            b_dict = cast(dict[str, Any], b)
+            mbo = b_dict.get("max_bytes_out")
+            if isinstance(mbo, int) and mbo > 0:
+                budget_max_bytes_out = mbo
+
+        _policy, policy_issues = parse_runtime_policy_set(
+            data,
+            declared_tools=declared_tools,
+            budget_max_bytes_out=budget_max_bytes_out,
+        )
+        for issue in policy_issues:
+            self.add_error(
+                str(issue.get("code", "invalid_policy")),
+                str(issue.get("msg", "invalid policy")),
+                symbol=cast(str | None, issue.get("symbol")),
+            )
 
         if self.errors:
             return None

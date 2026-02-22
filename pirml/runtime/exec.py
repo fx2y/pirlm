@@ -15,6 +15,14 @@ from typing import Any, TextIO, cast
 
 from ..clock import SequenceClock
 from ..contracts.schemas import ErrorObject, FinalResult, ResultRow
+from .policy import (
+    RuntimePolicySet,
+    ToolRuntimePolicy,
+    clamp_retry_budget,
+    enforce_payload_cap,
+    execution_policy_error,
+    resolve_effective_timeout,
+)
 from .rpc import (
     JSONObject,
     ProtocolError,
@@ -343,16 +351,26 @@ def execute_with_retry(
     args: Mapping[str, Any],
     timeout: float | None,
     max_retries: int,
+    policy: ToolRuntimePolicy | None = None,
 ) -> tuple[Mapping[str, Any], int]:
+    if policy is not None:
+        policy_error = execution_policy_error(tool, policy)
+        if policy_error is not None:
+            return {"ok": False, "error": policy_error}, 0
+
+    retry_budget = clamp_retry_budget(max_retries, policy)
     retries = 0
     while True:
         payload = registry.execute(tool, args, timeout=timeout)
+        payload = enforce_payload_cap(tool=tool, payload=payload, policy=policy)
         if payload.get("ok"):
             return payload, retries
 
         error = payload.get("error")
         retryable = isinstance(error, Mapping) and bool(error.get("retryable"))
-        if not retryable or retries >= max_retries:
+        if policy is not None and not policy.idempotent:
+            retryable = False
+        if not retryable or retries >= retry_budget:
             return payload, retries
         retries += 1
 
@@ -483,6 +501,7 @@ def run_live(
     clock: SequenceClock,
     max_line_bytes: int,
     timeout: float = 30.0,
+    runtime_policies: RuntimePolicySet | None = None,
 ) -> RunOutput:
     """S.EX2, S.EX3: Subprocess supervisor loop"""
     start_time = time.monotonic()
@@ -529,8 +548,21 @@ def run_live(
                     call_id, tool, args, tool_timeout = _require_call_fields(frame)
 
                     remaining = _remaining_timeout_seconds(start_time, timeout)
-                    effective_timeout = tool_timeout if tool_timeout is not None else remaining
-                    effective_timeout = min(effective_timeout, remaining)
+                    tool_policy = runtime_policies.for_tool(tool) if runtime_policies else None
+                    policy_timeout = tool_policy.timeout_s if tool_policy is not None else None
+                    if runtime_policies is not None and tool in runtime_policies.timeout_overrides_s:
+                        policy_timeout = runtime_policies.timeout_overrides_s[tool]
+                    elif (
+                        runtime_policies is not None
+                        and runtime_policies.default_timeout_s is not None
+                        and policy_timeout is None
+                    ):
+                        policy_timeout = runtime_policies.default_timeout_s
+                    effective_timeout = resolve_effective_timeout(
+                        call_timeout=tool_timeout,
+                        remaining_timeout=remaining,
+                        policy_timeout=policy_timeout,
+                    )
 
                     payload, retries = execute_with_retry(
                         registry,
@@ -538,6 +570,7 @@ def run_live(
                         args=args,
                         timeout=effective_timeout,
                         max_retries=2,
+                        policy=tool_policy,
                     )
                     res_frame = _build_result_frame(
                         call_id=call_id,
