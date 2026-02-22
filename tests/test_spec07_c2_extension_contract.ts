@@ -9,6 +9,7 @@ let mockResult: any = {
   trace: "trace.ndjson",
   final: "final.json",
   artifacts: "art",
+  runSha: "abc",
   summary: "Mocked OK",
 };
 
@@ -33,7 +34,7 @@ async function runTest() {
   const appendedEntries: any[] = [];
   const mockCtx = {
     ui: createUIAdapter(mockUI),
-    session: {},
+    session: { entry: { id: "e123" } },
     appendEntry: async (entry: any) => {
       console.log(`[APPEND ENTRY] ${JSON.stringify(entry, null, 2)}`);
       appendedEntries.push(entry);
@@ -65,6 +66,12 @@ async function runTest() {
   }
   if (!pointerEntry.data.runId.startsWith("r")) {
     throw new Error(`Invalid runId: ${pointerEntry.data.runId}`);
+  }
+  if (pointerEntry.parentId !== "e123") {
+    throw new Error(`Expected parentId=e123, got ${pointerEntry.parentId}`);
+  }
+  if (!Array.isArray(pointerEntry.data.roots) || pointerEntry.data.roots.length < 2) {
+    throw new Error("Pointer roots missing");
   }
   console.log("PASS: PointerEntry validated");
 
@@ -98,11 +105,6 @@ async function runTest() {
 
   console.log("\nALL C2 EXTENSION CONTRACT TESTS PASSED");
 }
-
-runTest().catch(err => {
-  console.error("TEST FAILED:", err);
-  process.exit(1);
-});
 
 runTest().catch(err => {
   console.error("TEST FAILED:", err);

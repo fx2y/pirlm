@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 
 export interface SpawnResult {
   ok: boolean;
@@ -6,6 +8,7 @@ export interface SpawnResult {
   trace: string;
   final: string;
   artifacts: string;
+  runSha: string;
   error?: { type: string; msg: string };
   summary: string;
 }
@@ -21,7 +24,7 @@ export async function spawnPirml(
   timeoutMs: number = 60000
 ): Promise<SpawnResult> {
   const args = [
-    "-m", "pirml",
+    "-m", "scripts.pirml_run",
     "--prog", prog,
     "--out-dir", outDir,
     "--timeout", (timeoutMs / 1000).toString(),
@@ -56,6 +59,7 @@ export async function spawnPirml(
           trace,
           final,
           artifacts: artDir,
+          runSha: "",
           error: { type: "runtime", msg: err.trim() || `exit ${code}` },
           summary: "PIRML Run Failed",
         });
@@ -65,14 +69,19 @@ export async function spawnPirml(
       // Try to parse summary from out (it should be stdout from pirml)
       // Actually, we should probably read final.json or just derivation
       // For now, let's just return success and minimal summary
-      resolve({
-        ok: true,
-        runId,
-        trace,
-        final,
-        artifacts: artDir,
-        summary: "PIRML Run OK",
-      });
+      readFinalSha(final)
+        .then((runSha) =>
+          resolve({
+            ok: true,
+            runId,
+            trace,
+            final,
+            artifacts: artDir,
+            runSha,
+            summary: "PIRML Run OK",
+          })
+        )
+        .catch((e) => reject(e));
     });
 
     p.on("error", (e) => {
@@ -80,4 +89,9 @@ export async function spawnPirml(
       reject(e);
     });
   });
+}
+
+async function readFinalSha(finalPath: string): Promise<string> {
+  const bytes = await readFile(finalPath);
+  return createHash("sha256").update(bytes).digest("hex");
 }

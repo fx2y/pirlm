@@ -64,6 +64,22 @@ class TestSpec07C5Headless(unittest.TestCase):
             self.assertTrue(res["ok"])
             self.assertIsNotNone(res["pointer"])
 
+    def test_event_parsing_accepts_out_dir_alias(self):
+        event = {
+            "type": "tool_execution_start",
+            "tool": "pirml_run",
+            "args": {"prog": str(self.prog_path), "out_dir": str(self.out_dir / "r2")},
+        }
+        with (
+            patch.dict(os.environ, {"PIRML_ENABLE_JSON_HEADLESS": "1"}),
+            StringIO() as out,
+            patch("sys.stdout", out),
+        ):
+            run_headless(stream=[json.dumps(event) + "\n"], project_root=self.project_root)
+            res = json.loads(out.getvalue())
+            self.assertEqual(res["type"], "pirml_summary")
+            self.assertEqual(res["runId"], "r2")
+
     def test_ignore_unknown_event(self):
         # C5.T01: Ignore unknown
         events = [

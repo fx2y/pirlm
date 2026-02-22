@@ -9,6 +9,7 @@ let mockResult: any = {
   trace: "trace.ndjson",
   final: "final.json",
   artifacts: "art",
+  runSha: "abc",
   summary: "Mocked OK",
 };
 
@@ -54,7 +55,13 @@ async function runTest() {
   // 2. Test tool execution
   console.log("\n--- TEST: TOOL EXECUTION ---");
   const params = { task: "tests/prog_ok.py" };
-  const result: any = await handlePirmlRunTool("call1", params, {} as any, () => {}, {});
+  const result: any = await handlePirmlRunTool(
+    "call1",
+    params,
+    { throwIfAborted: () => {} } as any,
+    () => {},
+    {}
+  );
 
   if (!result.details || !result.details.runId) {
     throw new Error("Tool result should contain runId in details");
@@ -76,7 +83,13 @@ async function runTest() {
     summary: "Mocked FAIL",
   };
 
-  const failResult: any = await handlePirmlRunTool("call2", params, {} as any, () => {}, {});
+  const failResult: any = await handlePirmlRunTool(
+    "call2",
+    params,
+    { throwIfAborted: () => {} } as any,
+    () => {},
+    {}
+  );
   if (failResult.details.ok !== false) {
     throw new Error("Tool result should NOT be OK");
   }

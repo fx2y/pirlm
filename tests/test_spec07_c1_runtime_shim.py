@@ -7,7 +7,7 @@ from tempfile import TemporaryDirectory
 from typing import cast
 
 from pirml.runtime.tools import default_registry
-from pirml.ux.errors import TimeoutError
+from pirml.ux.errors import IntegrityError, TimeoutError
 from pirml.ux.runtime_bridge import replay, run_once
 from pirml.ux.types import PointerPayload
 
@@ -102,8 +102,20 @@ class TestSpec07C1RuntimeShim(unittest.TestCase):
             for r in ptr["roots"]:
                 self.assertTrue(Path(r).exists())
 
+    def test_projection_refuses_non_projection_directory(self):
+        pirml_dir = self.project_root / ".pirml"
+        pirml_dir.mkdir(exist_ok=True)
+        (pirml_dir / "artifacts").mkdir()
+        with self.assertRaises(IntegrityError):
+            run_once(
+                self.prog_path,
+                self.out_dir,
+                project_root=self.project_root,
+                art_root=self.art_dir,
+            )
+
     def test_ux_summary_derivation(self):
-        from pirml.ux.layout import derive_summary
+        from pirml.ux.layout import POINTER_SUMMARY_MAX_CHARS, derive_summary
 
         run_once(self.prog_path, self.out_dir, art_root=self.art_dir)
         final_path = self.out_dir / "final.json"
@@ -115,9 +127,19 @@ class TestSpec07C1RuntimeShim(unittest.TestCase):
         self.assertEqual(summary, "this is a test answer")
 
         web_out_path = self.out_dir / "web_output.json"
-        web_out_path.write_text(json.dumps({"answer": "rich web answer"}), encoding="utf-8")
+        long_answer = "rich web answer " * 40
+        web_out_path.write_text(json.dumps({"answer": long_answer}), encoding="utf-8")
         summary = derive_summary(self.out_dir)
-        self.assertEqual(summary, "rich web answer")
+        self.assertLessEqual(len(summary or ""), POINTER_SUMMARY_MAX_CHARS + 3)
+
+    def test_pointer_ts_monotonic(self):
+        out1 = self.tmp_path / "out_r1"
+        out2 = self.tmp_path / "out_r2"
+        r1 = run_once(self.prog_path, out1, art_root=self.art_dir)
+        r2 = run_once(self.prog_path, out2, art_root=self.art_dir)
+        p1 = cast(PointerPayload, r1["pointer"])
+        p2 = cast(PointerPayload, r2["pointer"])
+        self.assertLess(p1["ts"], p2["ts"])
 
 
 if __name__ == "__main__":

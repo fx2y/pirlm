@@ -15,6 +15,8 @@ from .errors import ArtifactError, IntegrityError, TimeoutError
 from .pointers import create_pointer_payload, project_last_run
 from .types import RunResult
 
+_POINTER_CLOCK = SequenceClock.from_env()
+
 
 def _drain(stream: Any, q: queue.Queue[str]) -> None:
     try:
@@ -125,7 +127,7 @@ def run_once(
             raise IntegrityError(f"Failed to parse final.json: {e}") from e
 
         run_id = out_dir.name
-        ts = SequenceClock.from_env().now()
+        ts = _POINTER_CLOCK.now()
 
         pointer = create_pointer_payload(run_id, out_dir, art_root, ts)
 

@@ -4,7 +4,7 @@ import { runtime } from "./spawn";
 export const PirmlRunParams = Type.Object({
   task: Type.String({ description: "The python program to run" }),
   mode: Type.Optional(Type.String({ description: "Execution mode" })),
-  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds" })),
+  timeout: Type.Optional(Type.Number({ description: "Timeout in seconds", minimum: 1 })),
 });
 
 export async function handlePirmlRunTool(
@@ -14,8 +14,17 @@ export async function handlePirmlRunTool(
   onUpdate: (update: any) => void,
   ctx: any
 ) {
+  if (process.env.PIRML_ENABLE_HYBRID_TOOL !== "1") {
+    return {
+      content: [{ type: "text", text: "unsupported: hybrid tool disabled" }],
+      details: { ok: false, error: { type: "unsupported", msg: "feature disabled", retryable: false } },
+    };
+  }
+
   const { task, timeout } = params;
   const timeoutMs = timeout ? timeout * 1000 : 60000;
+  onUpdate({ stage: "start", task });
+  signal?.throwIfAborted?.();
   
   const ts = Date.now();
   const runId = `r${ts}`;
@@ -24,6 +33,8 @@ export async function handlePirmlRunTool(
 
   try {
     const res = await runtime.spawn(task, outDir, artDir, timeoutMs);
+    signal?.throwIfAborted?.();
+    onUpdate({ stage: "done", runId: res.runId, ok: res.ok });
     
     // B2: return ToolResult content small + details big pointers
     return {
@@ -38,6 +49,7 @@ export async function handlePirmlRunTool(
         trace: res.trace,
         final: res.final,
         artifacts: res.artifacts,
+        runSha: res.runSha,
         ok: res.ok,
       },
     };

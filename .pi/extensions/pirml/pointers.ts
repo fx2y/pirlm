@@ -3,8 +3,8 @@ export interface PointerRow {
   trace: string;
   final: string;
   artifactsDir: string;
-  projection: string;
-  hash: string;
+  roots: string[];
+  runSha: string;
   ts: number;
 }
 
@@ -31,7 +31,7 @@ export function buildCustomEntry(
   trace: string,
   final: string,
   artifacts: string,
-  hash: string,
+  runSha: string,
   ts: number,
   parentId: string | null = null
 ): CustomEntry {
@@ -43,12 +43,17 @@ export function buildCustomEntry(
       trace,
       final,
       artifactsDir: artifacts,
-      projection: ".pirml",
-      hash,
+      roots: [outDirFromTrace(trace), artifacts],
+      runSha,
       ts,
     },
     parentId,
   };
+}
+
+function outDirFromTrace(trace: string): string {
+  const idx = trace.lastIndexOf("/trace.ndjson");
+  return idx > 0 ? trace.slice(0, idx) : ".";
 }
 
 export function buildCustomMessage(
@@ -58,13 +63,15 @@ export function buildCustomMessage(
 ): CustomMessage {
   const status = ok ? "OK" : "FAIL";
   const content = `PIRML ${runId} ${status}`;
+  const oneLine = summary ? summary.replace(/\s+/g, " ").trim() : "";
+  const capped = oneLine.slice(0, 120);
   // Summary is optional one-liner
   return {
     type: "custom_message",
     message: {
       role: "custom",
       customType: "pirml",
-      content: summary ? `${content}: ${summary}` : content,
+      content: capped ? `${content}: ${capped}` : content,
       display: true,
       details: { runId },
     },

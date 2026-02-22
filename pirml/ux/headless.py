@@ -21,7 +21,7 @@ def process_event(event: dict[str, Any], project_root: Path = Path(".")) -> dict
         if tool == "pirml_run":
             args = event.get("args", {})
             prog = args.get("prog")
-            out_dir = args.get("out-dir")
+            out_dir = args.get("out-dir") or args.get("out_dir")
 
             if not prog or not out_dir:
                 return {
@@ -106,9 +106,9 @@ def run_headless(stream: Any = sys.stdin, project_root: Path = Path(".")) -> Non
                         "type": "pirml_error",
                         "error": {"type": "integrity", "msg": str(e), "retryable": False},
                     }
-                ),
-                file=sys.stderr,
+                )
             )
+            sys.stdout.flush()
 
 
 if __name__ == "__main__":

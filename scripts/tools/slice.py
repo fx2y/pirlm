@@ -10,6 +10,15 @@ from pirml.artifacts.store import ArtifactStore
 from pirml.artifacts.view_materialize import ViewMaterializer
 
 
+def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
+    return {"type": err_type, "msg": msg, "retryable": retryable}
+
+
+def _emit_error(err_type: str, msg: str, code: int) -> None:
+    print(json.dumps(_typed_error(err_type, msg)), file=sys.stderr)
+    sys.exit(code)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="pirml-slice", description="Create artifact slices for RLM recursion."
@@ -28,8 +37,7 @@ def main() -> None:
         art_root = Path(".pirml/artifacts")
 
     if not art_root.exists():
-        print(f"Error: Artifact root not found: {art_root}", file=sys.stderr)
-        sys.exit(1)
+        _emit_error("artifact", f"Artifact root not found: {art_root}", 1)
 
     try:
         # Load spec
@@ -37,14 +45,12 @@ def main() -> None:
             try:
                 spec = json.loads(Path(args.spec).read_text(encoding="utf-8"))
             except json.JSONDecodeError as e:
-                print(f"Error: Failed to parse spec file: {e}", file=sys.stderr)
-                sys.exit(1)
+                _emit_error("validation", f"Failed to parse spec file: {e}", 1)
         else:
             try:
                 spec = json.loads(args.spec)
             except json.JSONDecodeError as e:
-                print(f"Error: Invalid JSON spec string: {e}", file=sys.stderr)
-                sys.exit(1)
+                _emit_error("validation", f"Invalid JSON spec string: {e}", 1)
 
         store = ArtifactStore(layout=default_layout(root=art_root))
         mat = ViewMaterializer(store)
@@ -54,9 +60,7 @@ def main() -> None:
         print(vid)
 
     except Exception as e:
-        # T07: Typed fail lanes
-        print(f"Error: {str(e)}", file=sys.stderr)
-        sys.exit(2)
+        _emit_error("integrity", str(e), 2)
 
 
 if __name__ == "__main__":

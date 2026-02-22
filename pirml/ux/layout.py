@@ -4,6 +4,12 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+POINTER_SUMMARY_MAX_CHARS = 160
+
+
+def _truncate_summary(text: str) -> str:
+    return text[:POINTER_SUMMARY_MAX_CHARS] + ("..." if len(text) > POINTER_SUMMARY_MAX_CHARS else "")
+
 
 def derive_summary(out_dir: Path) -> str | None:
     """C1.T06: Derive UX summary from output/web_output artifacts only."""
@@ -16,7 +22,7 @@ def derive_summary(out_dir: Path) -> str | None:
                 wo_dict = cast("dict[str, Any]", wo)
                 ans = wo_dict.get("answer", "")
                 if isinstance(ans, str) and ans:
-                    return ans[:120] + ("..." if len(ans) > 120 else "")
+                    return _truncate_summary(ans)
         except Exception:
             pass
 
@@ -33,7 +39,7 @@ def derive_summary(out_dir: Path) -> str | None:
                 output_dict = cast("dict[str, Any]", output)
                 ans = output_dict.get("answer")
                 if isinstance(ans, str):
-                    return ans[:120] + ("..." if len(ans) > 120 else "")
+                    return _truncate_summary(ans)
         except Exception:
             pass
 

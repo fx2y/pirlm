@@ -3,14 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from pirml.clock import SequenceClock
-
 from .types import PointerPayload
-
-
-def generate_run_id(clock: SequenceClock) -> str:
-    # S07: rid=f"r{clock.now():010d}"
-    return f"r{clock.now():010d}"
 
 
 def compute_run_sha(final_path: Path) -> str:
@@ -54,15 +47,13 @@ def project_last_run(out_dir: Path, art_root: Path, project_root: Path) -> None:
     final_dst = pirml_dir / "final.json"
     art_dst = pirml_dir / "artifacts"
 
-    # Force rewrite (deterministic)
+    # Replace only existing projection links/files; never recursively delete directories.
     for p in [trace_dst, final_dst, art_dst]:
-        if p.is_symlink() or p.exists():
-            if p.is_dir() and not p.is_symlink():
-                import shutil
-
-                shutil.rmtree(p)
-            else:
-                p.unlink()
+        if p.is_symlink() or p.is_file():
+            p.unlink()
+            continue
+        if p.is_dir():
+            raise FileExistsError(f"Refusing to replace non-projection directory: {p}")
 
     # Use absolute paths for symlinks to ensure they resolve from anywhere
     if trace_src.exists():

@@ -43,9 +43,9 @@ export async function handlePirmlCommand(
       res.trace,
       res.final,
       res.artifacts,
-      "", // hash would be read from final.json
+      res.runSha,
       ts,
-      null // parentId from session
+      (ctx.session as any)?.entry?.id ?? null
     );
     await ctx.appendEntry(entry);
 

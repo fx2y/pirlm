@@ -10,6 +10,15 @@ from pirml.artifacts.paths import default_layout
 from pirml.artifacts.store import ArtifactStore
 
 
+def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
+    return {"type": err_type, "msg": msg, "retryable": retryable}
+
+
+def _emit_error(err_type: str, msg: str, code: int) -> None:
+    print(json.dumps(_typed_error(err_type, msg)), file=sys.stderr)
+    sys.exit(code)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="pirml-open", description="Open artifacts/views by ID.")
     parser.add_argument("id", help="Artifact ID (AID) or View ID (VID)")
@@ -41,8 +50,7 @@ def main() -> None:
         art_root = Path(".pirml/artifacts")
 
     if not art_root.exists():
-        print(f"Error: Artifact root not found: {art_root}", file=sys.stderr)
-        sys.exit(1)
+        _emit_error("artifact", f"Artifact root not found: {art_root}", 1)
 
     try:
         store = ArtifactStore(layout=default_layout(root=art_root))
@@ -50,8 +58,7 @@ def main() -> None:
         if args.mode == "meta":
             meta = store.get_meta(target_id)
             if not meta:
-                print(f"Error: artifact {target_id} not found", file=sys.stderr)
-                sys.exit(1)
+                _emit_error("artifact", f"artifact {target_id} not found", 1)
             print(json.dumps(meta, indent=2, sort_keys=True))
         elif args.mode == "text":
             try:
@@ -65,22 +72,18 @@ def main() -> None:
                     try:
                         print(data.decode("utf-8"))
                     except UnicodeDecodeError:
-                        print(f"Error: artifact {target_id} is binary", file=sys.stderr)
-                        sys.exit(1)
+                        _emit_error("artifact", f"artifact {target_id} is binary", 1)
                 except ArtifactPathError as e:
-                    print(f"Error: {str(e)}", file=sys.stderr)
-                    sys.exit(1)
+                    _emit_error("artifact", str(e), 1)
         else:  # bytes
             try:
                 data = store.get_bytes(target_id)
                 sys.stdout.buffer.write(data)
             except ArtifactPathError as e:
-                print(f"Error: {str(e)}", file=sys.stderr)
-                sys.exit(1)
+                _emit_error("artifact", str(e), 1)
 
     except Exception as e:
-        print(f"Error: {str(e)}", file=sys.stderr)
-        sys.exit(2)
+        _emit_error("integrity", str(e), 2)
 
 
 if __name__ == "__main__":

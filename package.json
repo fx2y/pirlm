@@ -8,9 +8,9 @@
     "lint": "npx tsc --noEmit"
   },
   "devDependencies": {
-    "tsx": "^4.0.0",
-    "typescript": "^5.0.0",
-    "@mariozechner/pi-coding-agent": "latest"
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "@mariozechner/pi-coding-agent": "0.54.0"
   },
   "pi": {
     "extensions": [

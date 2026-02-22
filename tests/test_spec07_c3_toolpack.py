@@ -72,7 +72,8 @@ class TestSpec07C3Toolpack(unittest.TestCase):
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(res.returncode, 1)
-        self.assertIn("Error", res.stderr)
+        err = json.loads(res.stderr)
+        self.assertEqual(err["type"], "artifact")
 
     def test_open_path_view(self):
         # C3.T02: Support path inputs by extracting ID
@@ -143,7 +144,8 @@ class TestSpec07C3Toolpack(unittest.TestCase):
         ]
         res = subprocess.run(cmd, capture_output=True, text=True)
         self.assertEqual(res.returncode, 2)
-        self.assertIn("Error", res.stderr)
+        err = json.loads(res.stderr)
+        self.assertEqual(err["type"], "integrity")
 
     def test_replay_wrapper(self):
         # C3.T05: Implement `pirml-replay` wrapper
