@@ -2,23 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
-from typing import NoReturn, cast
+from typing import cast
 
 from pirml.artifacts.paths import default_layout
 from pirml.artifacts.store import ArtifactStore
 from pirml.artifacts.view_dsl import SliceSpec
 from pirml.artifacts.view_materialize import ViewMaterializer
-
-
-def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
-    return {"type": err_type, "msg": msg, "retryable": retryable}
-
-
-def _emit_error(err_type: str, msg: str, code: int) -> NoReturn:
-    print(json.dumps(_typed_error(err_type, msg)), file=sys.stderr)
-    sys.exit(code)
+from scripts.tools.common import emit_error, resolve_art_root
 
 
 def _load_spec(raw_spec: str) -> SliceSpec:
@@ -27,11 +18,11 @@ def _load_spec(raw_spec: str) -> SliceSpec:
         try:
             return cast(SliceSpec, json.loads(spec_path.read_text(encoding="utf-8")))
         except json.JSONDecodeError as e:
-            _emit_error("validation", f"Failed to parse spec file: {e}", 1)
+            emit_error("validation", f"Failed to parse spec file: {e}", 1)
     try:
         return cast(SliceSpec, json.loads(raw_spec))
     except json.JSONDecodeError as e:
-        _emit_error("validation", f"Invalid JSON spec string: {e}", 1)
+        emit_error("validation", f"Invalid JSON spec string: {e}", 1)
 
 
 def main() -> None:
@@ -47,12 +38,10 @@ def main() -> None:
     args = parser.parse_args()
 
     # C1.T04: Support .pirml projection if default art/ missing
-    art_root = args.art_root
-    if art_root == Path("art") and not art_root.exists() and Path(".pirml/artifacts").exists():
-        art_root = Path(".pirml/artifacts")
+    art_root = resolve_art_root(args.art_root)
 
     if not art_root.exists():
-        _emit_error("artifact", f"Artifact root not found: {art_root}", 1)
+        emit_error("artifact", f"Artifact root not found: {art_root}", 1)
 
     try:
         spec = _load_spec(args.spec)
@@ -64,7 +53,7 @@ def main() -> None:
         print(vid)
 
     except Exception as e:
-        _emit_error("integrity", str(e), 2)
+        emit_error("integrity", str(e), 2)
 
 
 if __name__ == "__main__":

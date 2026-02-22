@@ -1,78 +1,81 @@
 # PIRML Constitution
 
-Mission: maximize replay-verifiable value (`V<<G`): reject fast, prove hard, ship only with artifacts.
+Mission: maximize replay-verifiable value (`V<<G`). Reject fast, prove hard, ship artifacts.
 
-Model: `L0` runtime/replay substrate (frozen), `L1` additive compiler+web+artifact+RLM layer, `G` authoritative gate ladder.
+Model: `L0` frozen runtime/replay/tool/channel contract; `L1` additive UX/compiler/web/artifact/rlm; `G` fail-fast authority ladder.
 
 ## Hard Laws
-- `H0` Policy root is this file; path-local norms live only in imported `.codex/rules/*`.
-- `H1` Authority is `mise run ci`; `mise run fast` is `<3s` reject signal, never release proof.
-- `H2` Gate order is immutable fail-fast: `fmt > lint > types > unit > proto > trace > schemas > replay`.
-- `H3` Determinism defaults mandatory: env pins, canonical JSON, strict clocks/counters, explicit total-order tie-breakers.
-- `H4` Protocol algebra closed: `op in {call,result,final,custom}`; exactly one `final`; `final` last.
-- `H5` Envelope law: `id=c%05d` monotonic unique/run; `seq` starts `1`, strict `+1`; field order deterministic.
-- `H6` Byte law: hash persisted/emitted bytes only; writer owns boundary cap; only `result` may truncate and must emit truncation metadata.
-- `H7` Tool surface frozen at `L0`: `{echo,readfile,bash}`; replay blocks tools (`PIRML_BLOCK_TOOLS=1`).
-- `H8` Artifact law: every run (incl fatal) emits `trace.ndjson` + compact `final.json`; any emitted pointer must resolve.
-- `H9` Channel split strict: stdout carries protocol only; diagnostics live in stderr/artifacts only.
-- `H10` Exit-code invariant: `0=success`, `1=business/validation/tool`, `2=integrity/config/internal`.
-- `H11` Fail-closed default: unknown op/tool/schema/plan/config/variant/path => typed failure (`type,msg,retryable`); no fallback/skip/swallow.
-- `H12` Parallel law: independent work uses bounded fanout with deterministic merge; serial path needs explicit reason.
-- `H13` State law: mutable state is run-scoped; cross-run globals are defects; caches are content-keyed immutable evidence.
-- `H14` Compiler branch law: exactly one branch/run: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `H15` Schema law: validate explicit artifact args only; hidden recursive `out/**` scans are forbidden.
-- `H16` Replay outranks live: parity drift makes live untrusted until fixed with proof.
-- `H17` Eval integrity: run every declared plan or emit typed unsupported row; silent skip is fraud.
-- `H18` Winner integrity: ranking must be deterministic, hashseed-invariant, evidence-linked; no narrative tie-breaks.
-- `H19` Boundary compactness: `final.json` root stays `{ok,results,output?,meta?}`; bulky/raw/debug payloads stay in artifacts.
-- `H20` Status truth is task ledger (`spec-0/*-tasks.jsonl`); design shards may guide intent but never override status.
-- `H21` Capability growth (`op/tool/gate/schema/runtime`) requires same-change invariant delta + failing test + docs/tasks/learnings/tutorial sync.
-- `H22` `L1` may evolve additively; convenience mutation of `L0` contracts/surfaces is prohibited.
+- `H0` Root policy here; path-local norms only in imported `.codex/rules/*`.
+- `H1` Authority=`mise run ci`; `mise run fast` is `<3s` reject-only signal.
+- `H2` Gate order immutable: `fmt>lint>types>unit>proto>trace>schemas>replay`.
+- `H3` Determinism default: pinned env, canonical bytes/JSON, strict clocks/counters, total-order tie-breakers.
+- `H4` Protocol algebra closed: `op in {call,result,final,custom}`; one `final`; `final` last.
+- `H5` Envelope/order law: `id=c%05d` unique monotonic/run; `seq` starts `1`, strict `+1`; deterministic key order.
+- `H6` Byte law: hash persisted bytes only; writer owns caps; only `result` truncates and must emit truncation metadata.
+- `H7` Tool surface freeze at `L0`: `{echo,readfile,bash}`; replay enforces `PIRML_BLOCK_TOOLS=1`.
+- `H8` Artifact law: every run (incl fatal) emits `trace.ndjson` + compact `final.json`; all emitted pointers resolve.
+- `H9` Channel split: stdout=protocol only; diagnostics in stderr/artifacts only.
+- `H10` Exit codes invariant: `0` success, `1` business/validation/tool, `2` integrity/config/internal.
+- `H11` Fail-closed default: unknown op/tool/schema/plan/config/variant/path => typed `{type,msg,retryable}`; no fallback/skip/swallow.
+- `H12` Parallel law: independent work uses bounded fanout + deterministic merge; serial needs explicit reason.
+- `H13` State law: mutable state run-scoped only; no cross-run globals; caches are content-keyed immutable evidence.
+- `H14` Compiler XOR law: exactly one branch/run: `{prog.py+contract.json}` xor `{compile_error.json}`.
+- `H15` Schema law: validate explicit artifact args only; no recursive `out/**` discovery.
+- `H16` Replay outranks live: parity drift makes live output non-authoritative until fixed with proof.
+- `H17` Eval integrity: execute every declared plan or emit typed unsupported row; silent skip is fraud.
+- `H18` Winner integrity: deterministic tuple ranking, hashseed-invariant, evidence-linked; no narrative ties; no `hash()` on eval paths.
+- `H19` Boundary compactness: `final.json` root remains `{ok,results,output?,meta?}`; bulky/raw/debug data stays artifacts.
+- `H20` Status truth: `spec-0/*-tasks.jsonl` only; HTN/cycle/tutorial shards are intent/support, not status authority.
+- `H21` Capability growth (`op/tool/gate/schema/runtime`) requires same-change invariant delta + failing test + sync of learnings/tasks/tutorial/docs.
+- `H22` One execution owner for UX wrappers: `scripts.pirml_run -> pirml.ux.runtime_bridge -> python -m pirml`.
+- `H23` `.pirml/*` is projection facade only; storage truth stays `out/*` + `art/*`; never destructively rewrite user dirs.
+- `H24` Pointer payload split: rich payload in `custom` data/details; human message at most one-line hint.
+- `H25` Optional bets default-off (`hybrid/headless/...`); disabled lane must typed-return unsupported, never implicit enable.
 
 ## Decision Kernel
-- `D0` Unknown future => choose lower state space, stricter determinism, cheaper verification.
+- `D0` Unknown future: minimize state space, maximize determinism, minimize verification cost.
 - `D1` One invariant, one owner, one enforcement locus (`code|test|gate|doc`).
-- `D2` Typed contracts beat text heuristics; permissive parse/load is defect.
-- `D3` Replayability and pointer resolvability outrank throughput narratives.
-- `D4` Do less but prove more: delete losers, flatten surfaces, keep one obvious path.
-- `D5` "Done" means executable proof artifacts, not green-only logs or prose.
-- `D6` Any behavioral delta must ship with handoff record: `constraint | rationale | locus | proof-cmd`.
+- `D2` Typed contracts beat prose heuristics; permissive parse/load is defect.
+- `D3` Replayability + pointer resolvability outrank throughput narrative.
+- `D4` Delete losers, flatten surfaces, keep one obvious execution path.
+- `D5` "Done" means executable artifacts and rerunnable proof commands, never logs/prose.
+- `D6` Every behavior delta ships handoff row: `constraint | rationale | locus | proof_cmd`.
 
 ## Engineering Doctrine
-- `E0` Python `3.12`, strict pyright, module execution via `python -m scripts.*` only.
-- `E1` Prefer pure transforms + explicit dataclass/TypedDict seams; contain `Any` at I/O boundaries only.
-- `E2` Subprocess I/O must be watchdog-safe (reader thread/queue), never readiness hacks.
-- `E3` API design is fail-closed: reject unknown variants early with typed errors.
-- `E4` Ordering claims require explicit tie-break keys in code plus direct tests.
-- `E5` Runtime, verifier, prompts, contracts, and schemas must describe one truth.
+- `E0` Python `3.12`, strict pyright, scripts invoked via `python -m scripts.*`.
+- `E1` Prefer pure transforms + explicit dataclass/TypedDict seams; confine `Any` to I/O edges.
+- `E2` Subprocess I/O must be watchdog-safe (reader thread/queue + reaper), never readiness hacks.
+- `E3` API/config parsing is fail-closed and exhaustive; unknown values typed-fail early.
+- `E4` Ordering claims require explicit tie-break keys in code and direct permutation tests.
+- `E5` Runtime, replay, schemas, prompts, docs must encode one truth.
 
 ## Coding Style
-- `S0` Narrow typed interfaces; deterministic defaults; no hidden global mutation.
-- `S1` No wildcard imports/exports; explicit public surfaces.
-- `S2` No broad exception swallowing on boundary paths; map to typed fail lanes.
-- `S3` Goldens are contractual bytes; drift/missing is failure; tests never self-heal.
-- `S4` Bugfix protocol: reproduce -> failing test -> patch -> `mise run fast` -> `mise run ci` -> replay/schema proof if boundary touched.
-- `S5` Prefer deletion/merge over policy sprawl; every added rule/code must reduce measurable risk.
+- `S0` Narrow typed interfaces; deterministic defaults; hidden global mutation is a defect.
+- `S1` Explicit imports/exports only; wildcard surfaces are banned.
+- `S2` Boundary exceptions must map to typed fail lanes; broad swallowing is banned.
+- `S3` Goldens are byte contracts; drift/missing fails; tests never self-heal.
+- `S4` Prefer deletion/merge over branch proliferation; every added line must reduce measured risk.
 
-## Compounding Loop
+## Compounding Protocol
 - `C0` Behavior delta without invariant delta is invalid.
-- `C1` Incident/perf regressions must harden policy and enforcement in the same merge.
-- `C2` Policy/docs/tasks/learnings/tutorial stay monotonic, contradiction-free, and synchronized.
-- `C3` Handoff records are append-only evidence for future iterations.
+- `C1` Incident/perf regression merges must include same-change hardening (`code+tests+policy`).
+- `C2` Handoff ledger is append-only in `spec-0/00-learnings.jsonl`; format: `constraint|rationale|locus|proof_cmd`.
+- `C3` Same-merge sync required: `spec-0/00-learnings.jsonl` + current `spec-0/*-tasks.jsonl` + current `spec-0/*-tutorial.jsonl`.
+- `C4` `done` flip requires: live locus exists, named tests exist, proof cmds rerun clean.
 
 ## Operator Entry Points
 - Setup: `mise run boot`
 - Fast reject: `mise run fast`
 - Authority gate: `mise run ci`
-- Replay parity smoke: `python -m scripts.replay_check`
-- Artifact parity smoke: `python -m scripts.artifact_rebuild --check`
-- Matrix smoke: `python -m scripts.spec06_eval --seed 0 --queries tests/fixtures/web/corpus.jsonl`
+- Replay parity: `python -m scripts.replay_check`
+- Artifact parity: `python -m scripts.artifact_rebuild --check`
+- Eval smoke: `python -m scripts.spec06_eval --seed 0 --queries tests/fixtures/web/corpus.jsonl`
 - Perf smoke: `mise run bench` (`out/bench.json`)
 
 ## Memory Layout
 - Root policy: `AGENTS.md`
 - Path policy: `.codex/rules/*.md`
-- Status truth: `spec-0/*-tasks.jsonl`
+- Status authority: `spec-0/*-tasks.jsonl`
 - Learning ledger: `spec-0/00-learnings.jsonl`
 - Operator flow: `spec-0/*-tutorial.jsonl`
 - Private prefs: `AGENTS.local.md` (gitignored)

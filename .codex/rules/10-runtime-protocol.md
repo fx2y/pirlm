@@ -7,30 +7,33 @@ paths:
   - "scripts/schema_lint.py"
   - "scripts/web_eval.py"
   - "scripts/web_fixture_smoke.py"
+  - "scripts/pirml_run.py"
+  - "scripts/tools/*.py"
+  - ".pi/extensions/pirml/*.ts"
 ---
 # Runtime + Protocol Rules (Normative)
 
-- `R0` Plane split absolute: `L0` runtime/replay contracts frozen; `L1` capabilities additive only.
-- `R1` Channel split absolute: stdout emits NDJSON protocol only; diagnostics go stderr/artifacts only.
-- `R2` Algebra closed: `op in {call,result,final,custom}`; unknown op/order/cardinality => integrity failure.
-- `R3` Final law: exactly one `final`, last; every `result.id` must reference a prior `call.id`.
-- `R4` Envelope law: `id=^c[0-9]{5}$` monotonic unique/run; `seq` starts `1`, strict `+1`; key order deterministic.
-- `R5` Byte law: hash post-transform bytes only (serialize/normalize/truncate complete); never hash surrogate/pre-state text.
-- `R6` Truncation law: writer owns cap (`8192` default); only `result` may truncate; emit `truncated=true,truncated_bytes>=0`; rehash post-truncate.
-- `R7` Redaction law: sensitive arg keys (`token|password|secret|api[_]?key|authorization|auth*`) become deterministic `{redacted_sha256}`.
-- `R8` Artifact law: every run, including fatal, emits `trace.ndjson` + `final.json`; every emitted pointer path must resolve.
-- `R9` Boundary law: `final.json` root is exactly `{ok,results,output?,meta?}`; bulky/raw/debug data remains in artifacts.
-- `R10` Replay law: validate trace (`op/order/id/envelope/hash`) before replay; force `PIRML_BLOCK_TOOLS=1`; ID/hash drift hard-fails.
-- `R11` Tool law: runtime tool surface is exact `{echo,readfile,bash}`; helper APIs (`get/put/llm_query/amap`) are internal, not tool growth.
-- `R12` Compiler branch law: exactly one branch/run: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `R13` Contract extraction law: strict sentinels/schema; alias-normalize before verify/hash/write.
-- `R14` AST/tool law: fail-closed structure checks (one async `main`, one `send_final`, awaited `TOOL_*`, exact deps).
-- `R15` Selection law: same inputs => same ordered refs via explicit total-order key; duplicates/invalid/empty usable sets typed-fail.
-- `R16` Eval law: execute every declared plan; unsupported rows are typed outputs; silent skip/fallback is prohibited.
-- `R17` Winner law: scoring is deterministic + hashseed-invariant; `hash()` is banned on eval paths.
-- `R18` Config law: strict exhaustive parse; unknown variant/provider/plan/cache or loser-lock breach => typed fail.
-- `R19` Parallel law: independent fanout uses bounded `gather`; merged output order equals deterministic source order.
-- `R20` State/cache law: mutable state run-scoped only; cache identity uses canonical stored bytes; persisted sha/bytes must match filesystem bytes.
-- `R21` Governor law: recursion has hard budgets (iters/subcalls/timeout); warn and fail thresholds are typed, never silent.
-- `R22` Pointer law: lineage spillover uses `op=custom`; default-off unless opted in; `custom` rows must never contaminate context packing.
-- `R23` Semantic-change law: behavior deltas touching op/tool/replay/compile/search/schema/gates require same-change invariant delta + tests + docs/tasks/learnings/tutorial sync.
+- `R0` `L0` is frozen (`runtime/replay/tool/channel`); `L1` can only add external adapters.
+- `R1` Channel split absolute: runtime stdout emits protocol rows only; diagnostics/errors stay stderr/artifacts.
+- `R2` Algebra closed: `op in {call,result,final,custom}` only; unknown op/order/cardinality is integrity failure.
+- `R3` Final law: exactly one `final`, strictly last; each `result.id` references a prior `call.id`.
+- `R4` Envelope law: `id=^c[0-9]{5}$` unique monotonic/run; `seq` starts `1` and increments by `+1`; key order deterministic.
+- `R5` Byte law: hash persisted post-transform bytes only; never hash pre-write/pre-truncate strings.
+- `R6` Truncation law: boundary writer owns cap (`8192` default); only `result` may truncate; emit truncation metadata; rehash truncated bytes.
+- `R7` Redaction law: sensitive arg keys (`token|password|secret|api[_]?key|authorization|auth*`) map to deterministic `{redacted_sha256}`.
+- `R8` Artifact law: every run (including fatal) emits `trace.ndjson` + `final.json`; emitted pointers must resolve.
+- `R9` Boundary law: `final.json` root stays `{ok,results,output?,meta?}`; bulky lineage/debug/raw payload stays artifacts.
+- `R10` Replay law: trace validated before replay (`op/order/id/hash/envelope`); replay forces `PIRML_BLOCK_TOOLS=1`; any drift hard-fails.
+- `R11` Tool law: runtime tool registry is exact `{echo,readfile,bash}`; helper APIs (`get/put/llm_query/amap`) are internal, not tool growth.
+- `R12` Compiler law: per run exactly one branch: `{prog.py+contract.json}` xor `{compile_error.json}`.
+- `R13` Eval law: every declared plan executes or emits typed unsupported row; no silent skip/fallback/default-winner.
+- `R14` Winner law: deterministic tuple ranking only; hashseed-invariant; `hash()` forbidden on eval paths.
+- `R15` Config law: strict exhaustive parse; unknown variant/provider/cache/plan/path (or loser-lock breach) => typed fail.
+- `R16` Parallel/state law: bounded fanout + deterministic merge; mutable state run-scoped; cache keys derive from canonical stored bytes.
+- `R17` Governor law: hard budgets (`iters/subcalls/timeout`) + deterministic packing/merge; warn/fail lanes typed, never silent.
+- `R18` Pointer law: lineage spillover uses `op=custom`; custom rows hash/redact like others; custom rows never enter context packing.
+- `R19` Execution-owner law: wrapper stack must delegate via single path `scripts.pirml_run -> pirml.ux.runtime_bridge -> python -m pirml`.
+- `R20` Projection law: `.pirml/*` is convenience projection only; never delete/rewrite non-projection user dirs.
+- `R21` Pointer payload law: pointer metadata belongs in `custom` data/details; `custom_message` optional one-line hint only.
+- `R22` Optional-feature law: gated capabilities (hybrid/headless/etc.) default off and typed-return unsupported when disabled.
+- `R23` Semantic-change law: deltas touching op/tool/replay/compile/search/schema/gates require same-change invariant delta + tests + ledger/doc sync.

@@ -1,20 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
-
-def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
-    return {"type": err_type, "msg": msg, "retryable": retryable}
-
-
-def _emit_error(err_type: str, msg: str, code: int) -> None:
-    print(json.dumps(_typed_error(err_type, msg)), file=sys.stderr)
-    sys.exit(code)
+from scripts.tools.common import emit_error
 
 
 def main() -> None:
@@ -36,7 +28,7 @@ def main() -> None:
     args = parser.parse_args()
     trace_path = Path(args.trace)
     if not trace_path.exists():
-        _emit_error("artifact", f"Trace not found: {trace_path}", 1)
+        emit_error("artifact", f"Trace not found: {trace_path}", 1)
 
     cmd = [
         sys.executable,
@@ -61,7 +53,7 @@ def main() -> None:
         proc = subprocess.run(cmd, env=env)
         sys.exit(proc.returncode)
     except Exception as e:
-        _emit_error("integrity", str(e), 2)
+        emit_error("integrity", str(e), 2)
 
 
 if __name__ == "__main__":

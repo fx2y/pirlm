@@ -8,15 +8,7 @@ from pathlib import Path
 from pirml.artifacts.errors import ArtifactPathError
 from pirml.artifacts.paths import default_layout
 from pirml.artifacts.store import ArtifactStore
-
-
-def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
-    return {"type": err_type, "msg": msg, "retryable": retryable}
-
-
-def _emit_error(err_type: str, msg: str, code: int) -> None:
-    print(json.dumps(_typed_error(err_type, msg)), file=sys.stderr)
-    sys.exit(code)
+from scripts.tools.common import emit_error, resolve_art_root
 
 
 def main() -> None:
@@ -45,12 +37,10 @@ def main() -> None:
             target_id = parse_view_artifact_path(target_id)
 
     # C1.T04: Support .pirml projection if default art/ missing
-    art_root = args.art_root
-    if art_root == Path("art") and not art_root.exists() and Path(".pirml/artifacts").exists():
-        art_root = Path(".pirml/artifacts")
+    art_root = resolve_art_root(args.art_root)
 
     if not art_root.exists():
-        _emit_error("artifact", f"Artifact root not found: {art_root}", 1)
+        emit_error("artifact", f"Artifact root not found: {art_root}", 1)
 
     try:
         store = ArtifactStore(layout=default_layout(root=art_root))
@@ -58,7 +48,7 @@ def main() -> None:
         if args.mode == "meta":
             meta = store.get_meta(target_id)
             if not meta:
-                _emit_error("artifact", f"artifact {target_id} not found", 1)
+                emit_error("artifact", f"artifact {target_id} not found", 1)
             print(json.dumps(meta, indent=2, sort_keys=True))
         elif args.mode == "text":
             try:
@@ -72,18 +62,18 @@ def main() -> None:
                     try:
                         print(data.decode("utf-8"))
                     except UnicodeDecodeError:
-                        _emit_error("artifact", f"artifact {target_id} is binary", 1)
+                        emit_error("artifact", f"artifact {target_id} is binary", 1)
                 except ArtifactPathError as e:
-                    _emit_error("artifact", str(e), 1)
+                    emit_error("artifact", str(e), 1)
         else:  # bytes
             try:
                 data = store.get_bytes(target_id)
                 sys.stdout.buffer.write(data)
             except ArtifactPathError as e:
-                _emit_error("artifact", str(e), 1)
+                emit_error("artifact", str(e), 1)
 
     except Exception as e:
-        _emit_error("integrity", str(e), 2)
+        emit_error("integrity", str(e), 2)
 
 
 if __name__ == "__main__":
