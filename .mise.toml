@@ -19,7 +19,7 @@ NO_COLOR = "1"
 [tasks.boot]
 description = "Install pinned tools and Python dev deps"
 alias = ["b"]
-run = "mise install && uv venv && uv pip install -r requirements-dev.txt"
+run = "mise install && uv venv --allow-existing && uv pip install -r requirements-dev.txt"
 
 [tasks.default]
 description = "List task contract (descriptions/aliases)"

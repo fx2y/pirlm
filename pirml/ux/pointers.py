@@ -20,6 +20,7 @@ def create_pointer_payload(
     art_root: Path,
     ts: int,
 ) -> PointerPayload:
+    artifacts_dir = art_root if art_root.exists() else out_dir
     final_path = out_dir / "final.json"
     run_sha = compute_run_sha(final_path)
 
@@ -28,8 +29,8 @@ def create_pointer_payload(
         "runId": run_id,
         "trace": str(out_dir / "trace.ndjson"),
         "final": str(final_path),
-        "artifactsDir": str(art_root),
-        "roots": [str(out_dir), str(art_root)],
+        "artifactsDir": str(artifacts_dir),
+        "roots": [str(out_dir), str(artifacts_dir)],
         "runSha": run_sha,
         "ts": ts,
     }
@@ -60,5 +61,6 @@ def project_last_run(out_dir: Path, art_root: Path, project_root: Path) -> None:
         trace_dst.symlink_to(trace_src.absolute())
     if final_src.exists():
         final_dst.symlink_to(final_src.absolute())
-    if art_root.exists():
-        art_dst.symlink_to(art_root.absolute())
+    # Keep artifacts pointer resolvable even when canonical art/ root is absent.
+    artifacts_src = art_root if art_root.exists() else out_dir
+    art_dst.symlink_to(artifacts_src.absolute())

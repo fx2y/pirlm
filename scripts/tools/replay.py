@@ -34,6 +34,9 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+    trace_path = Path(args.trace)
+    if not trace_path.exists():
+        _emit_error("artifact", f"Trace not found: {trace_path}", 1)
 
     cmd = [
         sys.executable,
@@ -42,7 +45,7 @@ def main() -> None:
         "--prog",
         str(args.prog),
         "--replay",
-        str(args.trace),
+        str(trace_path),
         "--out-dir",
         str(args.out_dir),
         "--timeout",

@@ -114,6 +114,17 @@ class TestSpec07C1RuntimeShim(unittest.TestCase):
                 art_root=self.art_dir,
             )
 
+    def test_projection_artifacts_link_exists_when_art_root_missing(self):
+        res = run_once(
+            self.prog_path,
+            self.out_dir,
+            project_root=self.project_root,
+        )
+        ptr = cast(PointerPayload, res["pointer"])
+        self.assertTrue(Path(ptr["artifactsDir"]).exists())
+        self.assertTrue((self.project_root / ".pirml" / "artifacts").is_symlink())
+        self.assertTrue((self.project_root / ".pirml" / "artifacts").resolve().exists())
+
     def test_ux_summary_derivation(self):
         from pirml.ux.layout import POINTER_SUMMARY_MAX_CHARS, derive_summary
 

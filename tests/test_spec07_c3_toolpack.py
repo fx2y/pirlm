@@ -179,6 +179,21 @@ class TestSpec07C3Toolpack(unittest.TestCase):
         self.assertEqual(res.returncode, 0)
         self.assertTrue((replay_out / "final.json").exists())
 
+    def test_replay_missing_trace_typed_error(self):
+        cmd = [
+            sys.executable,
+            "-m",
+            "scripts.tools.replay",
+            "tests/prog_ok.py",
+            str(self.tmp_path / "missing" / "trace.ndjson"),
+            "--out-dir",
+            str(self.tmp_path / "replay_missing"),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 1)
+        err = json.loads(res.stderr)
+        self.assertEqual(err["type"], "artifact")
+
 
 if __name__ == "__main__":
     unittest.main()
