@@ -99,6 +99,18 @@ run = "python -m scripts.tool_search_bench --web"
 description = "Web evaluation matrix + winner selection"
 run = "python -m scripts.web_eval"
 
+[tasks."eval-golden"]
+description = "Golden50 regression eval (explicit dataset, additive helper)"
+run = "python -m pirml.eval --suite golden50 --dataset spec-0/08/golden50.jsonl --jobs 8 --out-dir out/eval/golden50"
+
+[tasks."eval-full"]
+description = "Full BrowseComp eval (requires explicit dataset override in local config)"
+run = "python -m pirml.eval --suite browsecomp --dataset tests/fixtures/web/corpus.jsonl --jobs 32 --out-dir out/eval/full"
+
+[tasks."eval-report"]
+description = "Aggregate eval shards into report+pareto artifacts"
+run = "python -m pirml.report out/eval/full/runs/*.ndjson --out out/eval/full/report.json"
+
 [tasks."ts-test"]
 description = "Run extension contract tests via tsx"
 run = "npm test"

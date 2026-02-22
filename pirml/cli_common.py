@@ -31,6 +31,8 @@ class ThresholdConfig:
     acc_min_delta: float = 0.0
     cost_max_delta: float = 0.0
     latency_max_delta: float = 0.0
+    acc_per_dollar_min_delta: float = 0.0
+    acc_per_min_min_delta: float = 0.0
 
 
 class CliFailure(Exception):

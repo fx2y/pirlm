@@ -28,12 +28,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--acc-min-delta", type=float, default=0.0)
     parser.add_argument("--cost-max-delta", type=float, default=0.0)
     parser.add_argument("--latency-max-delta", type=float, default=0.0)
+    parser.add_argument("--acc-per-dollar-min-delta", type=float, default=0.0)
+    parser.add_argument("--acc-per-min-min-delta", type=float, default=0.0)
+    parser.add_argument("--delta-out", help="Optional path to write canonical compare delta JSON")
     return parser
 
 
 def _compare(prev_path: str, now_path: str, th: ThresholdConfig) -> dict[str, Any]:
-    prev = json.loads(Path(prev_path).read_text(encoding="utf-8"))
-    now = json.loads(Path(now_path).read_text(encoding="utf-8"))
+    prev_file = Path(prev_path)
+    now_file = Path(now_path)
+    if not prev_file.is_file():
+        raise CliFailure("unsupported", f"compare input not found: {prev_file}", 1, retryable=False)
+    if not now_file.is_file():
+        raise CliFailure("unsupported", f"compare input not found: {now_file}", 1, retryable=False)
+    prev = json.loads(prev_file.read_text(encoding="utf-8"))
+    now = json.loads(now_file.read_text(encoding="utf-8"))
     if not isinstance(prev, dict) or not isinstance(now, dict):
         raise CliFailure("validation", "compare inputs must be report objects", 1)
     prev_map = cast(dict[str, Any], prev)
@@ -43,16 +52,31 @@ def _compare(prev_path: str, now_path: str, th: ThresholdConfig) -> dict[str, An
     latency_delta = float(now_map.get("median_latency", 0.0)) - float(
         prev_map.get("median_latency", 0.0)
     )
+    acc_per_dollar_delta = float(now_map.get("acc_per_$", 0.0)) - float(prev_map.get("acc_per_$", 0.0))
+    acc_per_min_delta = float(now_map.get("acc_per_min", 0.0)) - float(
+        prev_map.get("acc_per_min", 0.0)
+    )
     failed = (
         acc_delta < th.acc_min_delta
         or cost_delta > th.cost_max_delta
         or latency_delta > th.latency_max_delta
+        or acc_per_dollar_delta < th.acc_per_dollar_min_delta
+        or acc_per_min_delta < th.acc_per_min_min_delta
     )
     return {
         "ok": not failed,
         "acc_delta": round(acc_delta, 6),
+        "acc_per_$_delta": round(acc_per_dollar_delta, 6),
+        "acc_per_min_delta": round(acc_per_min_delta, 6),
         "cost_delta": round(cost_delta, 6),
         "latency_delta": round(latency_delta, 6),
+        "thresholds": {
+            "acc_min_delta": round(th.acc_min_delta, 6),
+            "cost_max_delta": round(th.cost_max_delta, 6),
+            "latency_max_delta": round(th.latency_max_delta, 6),
+            "acc_per_dollar_min_delta": round(th.acc_per_dollar_min_delta, 6),
+            "acc_per_min_min_delta": round(th.acc_per_min_min_delta, 6),
+        },
     }
 
 
@@ -77,9 +101,18 @@ def main(argv: list[str] | None = None) -> int:
                     acc_min_delta=float(args.acc_min_delta),
                     cost_max_delta=float(args.cost_max_delta),
                     latency_max_delta=float(args.latency_max_delta),
+                    acc_per_dollar_min_delta=float(args.acc_per_dollar_min_delta),
+                    acc_per_min_min_delta=float(args.acc_per_min_min_delta),
                 ),
             )
             report["compare"] = compare
+            if args.delta_out:
+                delta_out = Path(args.delta_out)
+                delta_out.parent.mkdir(parents=True, exist_ok=True)
+                delta_out.write_text(
+                    json.dumps(compare, sort_keys=True, separators=(",", ":")),
+                    encoding="utf-8",
+                )
         store = ArtifactStore(default_layout(Path(args.art_root)))
         try:
             shared_inputs = sorted(list(args.inputs))
