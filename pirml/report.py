@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import argparse
 import json
-import statistics
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any, cast
 
+from .artifacts import ArtifactStore, default_layout
+from .artifacts.types import ArtifactSource
 from .cli_common import CliFailure, ThresholdConfig, emit_failure, strict_parse_args
+from .reporting import aggregate_report, read_eval_rows
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,59 +17,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("inputs", nargs="+", help="Input eval NDJSON paths")
     parser.add_argument("--out", required=True, help="Output report JSON path")
     parser.add_argument(
+        "--pareto-out", help="Output pareto JSON path (default: <out_dir>/pareto.json)"
+    )
+    parser.add_argument(
+        "--art-root", default="art", help="Artifact root for CAS linkage (default: art)"
+    )
+    parser.add_argument(
         "--compare", nargs=2, metavar=("PREV", "NOW"), help="Compare two report json files"
     )
     parser.add_argument("--acc-min-delta", type=float, default=0.0)
     parser.add_argument("--cost-max-delta", type=float, default=0.0)
     parser.add_argument("--latency-max-delta", type=float, default=0.0)
     return parser
-
-
-def _read_rows(paths: list[str]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for raw in sorted(paths):
-        path = Path(raw)
-        if not path.is_file():
-            raise CliFailure("unsupported", f"missing input: {path}", 1, retryable=False)
-        for line in path.read_text(encoding="utf-8").splitlines():
-            text = line.strip()
-            if not text:
-                continue
-            try:
-                row = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise CliFailure("validation", f"invalid NDJSON row in {path}: {exc}", 1) from exc
-            if not isinstance(row, dict):
-                raise CliFailure("validation", f"row must be object in {path}", 1)
-            rows.append(cast(dict[str, Any], row))
-    rows.sort(
-        key=lambda r: (
-            str(r.get("task_id", "")),
-            int(r.get("attempt", 0) or 0),
-            int(r.get("shard", 0) or 0),
-            int(r.get("seq", 0) or 0),
-        )
-    )
-    return rows
-
-
-def _build_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        raise CliFailure("unsupported", "no rows to aggregate", 1, retryable=False)
-    ok_rows = [r for r in rows if bool(r.get("ok"))]
-    total = len(rows)
-    acc = (len(ok_rows) / total) if total else 0.0
-    latencies = [float(r.get("latency_ms", 0.0) or 0.0) for r in rows]
-    costs = [float(r.get("cost_usd", 0.0) or 0.0) for r in rows]
-    fail_tags = Counter(str(r.get("fail_tag", "")) for r in rows if not bool(r.get("ok")))
-    return {
-        "ok": True,
-        "total_tasks": total,
-        "acc": round(acc, 6),
-        "median_latency": round(statistics.median(latencies), 6),
-        "median_cost": round(statistics.median(costs), 6),
-        "fail_pareto": [{"fail_tag": k, "count": v} for k, v in sorted(fail_tags.items())],
-    }
 
 
 def _compare(prev_path: str, now_path: str, th: ThresholdConfig) -> dict[str, Any]:
@@ -100,9 +60,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = strict_parse_args(parser, argv)
-        report = _build_report(_read_rows(list(args.inputs)))
+        report, pareto = aggregate_report(
+            read_eval_rows(list(args.inputs)), inputs=list(args.inputs)
+        )
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        pareto_path = (
+            Path(args.pareto_out) if args.pareto_out else out_path.with_name("pareto.json")
+        )
+        pareto_path.parent.mkdir(parents=True, exist_ok=True)
         if args.compare is not None:
             compare = _compare(
                 args.compare[0],
@@ -114,8 +80,41 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
             report["compare"] = compare
+        store = ArtifactStore(default_layout(Path(args.art_root)))
+        try:
+            shared_inputs = sorted(list(args.inputs))
+            report_src: ArtifactSource = {
+                "tool": "pirml.report",
+                "params": {"inputs": shared_inputs, "kind": "report"},
+            }
+            pareto_src: ArtifactSource = {
+                "tool": "pirml.report",
+                "params": {"inputs": shared_inputs, "kind": "pareto"},
+            }
+            report_aid = store.put_raw(
+                json.dumps(report, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+                kind="report",
+                mime="application/json",
+                src=report_src,
+            )
+            pareto_aid = store.put_raw(
+                json.dumps(pareto, sort_keys=True, separators=(",", ":")).encode("utf-8"),
+                kind="report",
+                mime="application/json",
+                src=pareto_src,
+            )
+        finally:
+            store.close()
+        report["artifacts"] = {
+            "report_aid": report_aid,
+            "pareto_aid": pareto_aid,
+            "art_root": str(Path(args.art_root)),
+        }
         out_path.write_text(
             json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        )
+        pareto_path.write_text(
+            json.dumps(pareto, sort_keys=True, separators=(",", ":")), encoding="utf-8"
         )
         if bool(report.get("compare", {}).get("ok", True)):
             return 0

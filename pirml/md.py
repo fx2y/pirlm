@@ -26,15 +26,28 @@ def _load_report(path: str) -> dict[str, Any]:
 
 
 def _render(report: dict[str, Any]) -> str:
+    notes_obj = report.get("meta", {}).get("notes", [])
+    notes: list[str] = []
+    if isinstance(notes_obj, list):
+        notes_any = cast(list[Any], notes_obj)
+        for note in notes_any:
+            notes.append(str(note))
     lines = [
         "# PIRML Eval Report",
         "",
         "## Summary",
         f"- ok: {bool(report.get('ok', False))}",
+        f"- suite: {str(report.get('suite', ''))}",
         f"- total_tasks: {int(report.get('total_tasks', 0) or 0)}",
         f"- acc: {float(report.get('acc', 0.0) or 0.0):.6f}",
+        f"- acc_per_$: {float(report.get('acc_per_$', 0.0) or 0.0):.6f}",
+        f"- acc_per_min: {float(report.get('acc_per_min', 0.0) or 0.0):.6f}",
         f"- median_latency: {float(report.get('median_latency', 0.0) or 0.0):.6f}",
         f"- median_cost: {float(report.get('median_cost', 0.0) or 0.0):.6f}",
+        f"- timeout_rate: {float(report.get('timeout_rate', 0.0) or 0.0):.6f}",
+        f"- invalid_output_rate: {float(report.get('invalid_output_rate', 0.0) or 0.0):.6f}",
+        f"- no_cite_rate: {float(report.get('no_cite_rate', 0.0) or 0.0):.6f}",
+        f"- replay_mismatch_rate: {float(report.get('replay_mismatch_rate', 0.0) or 0.0):.6f}",
         "",
         "## Pareto",
     ]
@@ -43,6 +56,17 @@ def _render(report: dict[str, Any]) -> str:
             continue
         row_map = cast(dict[str, Any], row)
         lines.append(f"- {row_map.get('fail_tag', 'UNKNOWN')}: {int(row_map.get('count', 0) or 0)}")
+        for task_row in row_map.get("top_task_ids", [])[:3]:
+            if not isinstance(task_row, dict):
+                continue
+            task_map = cast(dict[str, Any], task_row)
+            lines.append(
+                f"  - {str(task_map.get('task_id', ''))}: {int(task_map.get('count', 0) or 0)}"
+            )
+    lines.append("")
+    lines.append("## Notes")
+    for note in notes:
+        lines.append(f"- {note}")
     lines.append("")
     return "\n".join(lines)
 
