@@ -16,7 +16,11 @@ class Spec08C5GoldenDeltaTests(unittest.TestCase):
     def test_golden_manifest_frozen_shape(self) -> None:
         manifest = Path("spec-0/08/golden50.jsonl")
         self.assertTrue(manifest.is_file())
-        rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
+        rows = [
+            json.loads(line)
+            for line in manifest.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
         self.assertEqual(len(rows), 50)
         for row in rows:
             self.assertIn("task_id", row)
@@ -52,16 +56,44 @@ class Spec08C5GoldenDeltaTests(unittest.TestCase):
                 encoding="utf-8",
             )
             prev.write_text(
-                json.dumps({"acc": 0.9, "median_cost": 0.01, "median_latency": 10.0, "acc_per_$": 100.0, "acc_per_min": 6.0}, sort_keys=True),
+                json.dumps(
+                    {
+                        "acc": 0.9,
+                        "median_cost": 0.01,
+                        "median_latency": 10.0,
+                        "acc_per_$": 100.0,
+                        "acc_per_min": 6.0,
+                    },
+                    sort_keys=True,
+                ),
                 encoding="utf-8",
             )
             now.write_text(
-                json.dumps({"acc": 0.5, "median_cost": 0.01, "median_latency": 10.0, "acc_per_$": 50.0, "acc_per_min": 3.0}, sort_keys=True),
+                json.dumps(
+                    {
+                        "acc": 0.5,
+                        "median_cost": 0.01,
+                        "median_latency": 10.0,
+                        "acc_per_$": 50.0,
+                        "acc_per_min": 3.0,
+                    },
+                    sort_keys=True,
+                ),
                 encoding="utf-8",
             )
             proc = self._run(
-                "-m","pirml.report",str(shard),"--out",str(out),"--compare",str(prev),str(now),
-                "--acc-min-delta","-0.1","--delta-out",str(delta)
+                "-m",
+                "pirml.report",
+                str(shard),
+                "--out",
+                str(out),
+                "--compare",
+                str(prev),
+                str(now),
+                "--acc-min-delta",
+                "-0.1",
+                "--delta-out",
+                str(delta),
             )
             self.assertEqual(proc.returncode, 1)
             err = json.loads(proc.stderr.strip())
@@ -96,16 +128,44 @@ class Spec08C5GoldenDeltaTests(unittest.TestCase):
                 encoding="utf-8",
             )
             prev.write_text(
-                json.dumps({"acc": 0.5, "median_cost": 0.01, "median_latency": 10.0, "acc_per_$": 100.0, "acc_per_min": 6.0}, sort_keys=True),
+                json.dumps(
+                    {
+                        "acc": 0.5,
+                        "median_cost": 0.01,
+                        "median_latency": 10.0,
+                        "acc_per_$": 100.0,
+                        "acc_per_min": 6.0,
+                    },
+                    sort_keys=True,
+                ),
                 encoding="utf-8",
             )
             now.write_text(
-                json.dumps({"acc": 0.5, "median_cost": 0.01, "median_latency": 10.0, "acc_per_$": 90.0, "acc_per_min": 5.0}, sort_keys=True),
+                json.dumps(
+                    {
+                        "acc": 0.5,
+                        "median_cost": 0.01,
+                        "median_latency": 10.0,
+                        "acc_per_$": 90.0,
+                        "acc_per_min": 5.0,
+                    },
+                    sort_keys=True,
+                ),
                 encoding="utf-8",
             )
             proc = self._run(
-                "-m","pirml.report",str(shard),"--out",str(out),"--compare",str(prev),str(now),
-                "--acc-per-dollar-min-delta","-5","--acc-per-min-min-delta","-0.5"
+                "-m",
+                "pirml.report",
+                str(shard),
+                "--out",
+                str(out),
+                "--compare",
+                str(prev),
+                str(now),
+                "--acc-per-dollar-min-delta",
+                "-5",
+                "--acc-per-min-min-delta",
+                "-0.5",
             )
             self.assertEqual(proc.returncode, 1)
             err = json.loads(proc.stderr.strip())
@@ -136,7 +196,9 @@ class Spec08C5GoldenDeltaTests(unittest.TestCase):
                 encoding="utf-8",
             )
             now.write_text(
-                json.dumps({"acc": 1.0, "median_cost": 0.01, "median_latency": 10.0}, sort_keys=True),
+                json.dumps(
+                    {"acc": 1.0, "median_cost": 0.01, "median_latency": 10.0}, sort_keys=True
+                ),
                 encoding="utf-8",
             )
             proc = self._run(

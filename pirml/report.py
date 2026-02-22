@@ -53,7 +53,9 @@ def _compare(prev_path: str, now_path: str, th: ThresholdConfig) -> dict[str, An
     latency_delta = float(now_map.get("median_latency", 0.0)) - float(
         prev_map.get("median_latency", 0.0)
     )
-    acc_per_dollar_delta = float(now_map.get("acc_per_$", 0.0)) - float(prev_map.get("acc_per_$", 0.0))
+    acc_per_dollar_delta = float(now_map.get("acc_per_$", 0.0)) - float(
+        prev_map.get("acc_per_$", 0.0)
+    )
     acc_per_min_delta = float(now_map.get("acc_per_min", 0.0)) - float(
         prev_map.get("acc_per_min", 0.0)
     )
@@ -151,16 +153,19 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             raw_ptr = row.get("pi_ptr")
             if isinstance(raw_ptr, dict):
+                raw_ptr_map = cast(dict[str, Any], raw_ptr)
                 row["pi_ptr"] = build_eval_pointer_payload(
-                    suite=str(raw_ptr.get("suite", row.get("suite", ""))),
+                    suite=str(raw_ptr_map.get("suite", row.get("suite", ""))),
                     task_id=task_id,
-                    run_id=str(raw_ptr.get("run_id", "")),
-                    trace_ptr=str(raw_ptr.get("trace_ptr", "")),
+                    run_id=str(raw_ptr_map.get("run_id", "")),
+                    trace_ptr=str(raw_ptr_map.get("trace_ptr", "")),
                     artifact_ids=[
-                        x for x in cast(list[Any], raw_ptr.get("artifact_ids", [])) if isinstance(x, str)
+                        x
+                        for x in cast(list[Any], raw_ptr_map.get("artifact_ids", []))
+                        if isinstance(x, str)
                     ],
                     report_ptr=str(out_path),
-                    fail_tag=str(raw_ptr.get("fail_tag", row.get("fail_tag", ""))),
+                    fail_tag=str(raw_ptr_map.get("fail_tag", row.get("fail_tag", ""))),
                 )
         out_path.write_text(
             json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
@@ -169,7 +174,11 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(pareto, sort_keys=True, separators=(",", ":")), encoding="utf-8"
         )
         validate_eval_pointer_refs(rows, art_root=args.art_root)
-        if bool(report.get("compare", {}).get("ok", True)):
+        compare_obj = report.get("compare")
+        compare_ok = True
+        if isinstance(compare_obj, dict):
+            compare_ok = bool(cast(dict[str, Any], compare_obj).get("ok", True))
+        if compare_ok:
             return 0
         raise CliFailure("validation", "threshold regression", 1, retryable=False)
     except CliFailure as err:

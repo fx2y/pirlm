@@ -33,6 +33,14 @@ def shard_path(*, out_dir: Path, suite: str, shard: int) -> Path:
     return runs / f"shard-{shard:05d}.ndjson"
 
 
+def _first_nonempty_str(row: dict[str, Any], *keys: str) -> str | None:
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
 def load_tasks(*, dataset: Path, shards: int, shard: int) -> list[EvalTask]:
     tasks: list[EvalTask] = []
     for line_no, line in enumerate(dataset.read_text(encoding="utf-8").splitlines(), start=1):
@@ -53,11 +61,14 @@ def load_tasks(*, dataset: Path, shards: int, shard: int) -> list[EvalTask]:
             raise CliFailure(
                 "validation", f"dataset row {line_no} missing non-empty task_id/qid", 1
             )
-        query = row.get("query")
-        if not isinstance(query, str) or not query:
-            raise CliFailure("validation", f"dataset row {line_no} missing non-empty query", 1)
-        expected = row.get("expected_answer")
-        expected_answer = expected if isinstance(expected, str) else query
+        query = _first_nonempty_str(row, "query", "question", "prompt", "expected_answer", "answer")
+        if query is None:
+            raise CliFailure(
+                "validation",
+                f"dataset row {line_no} missing non-empty query/question/prompt/expected_answer",
+                1,
+            )
+        expected_answer = _first_nonempty_str(row, "expected_answer", "answer", "query") or query
         if stable_shard(raw_task_id, shards) != shard:
             continue
         tasks.append(EvalTask(task_id=raw_task_id, query=query, expected_answer=expected_answer))
@@ -103,6 +114,43 @@ def _append(path: Path, row: dict[str, Any]) -> None:
         handle.write(canonical_json(row) + "\n")
 
 
+def _run_id(*, suite: str, shard: int) -> str:
+    return f"{suite}-s{shard:05d}"
+
+
+def _with_pi_ptr(
+    *,
+    row: dict[str, Any],
+    suite: str,
+    task_id: str,
+    shard_path_str: str,
+    shard: int,
+) -> dict[str, Any]:
+    row["pi_ptr"] = build_eval_pointer_payload(
+        suite=suite,
+        task_id=task_id,
+        run_id=_run_id(suite=suite, shard=shard),
+        trace_ptr=shard_path_str,
+        artifact_ids=[],
+        fail_tag=str(row.get("fail_tag", "")),
+    )
+    return row
+
+
+def _resume_skip_row(
+    *, seq: int, task: EvalTask, suite: str, shard: int, attempt: int
+) -> dict[str, Any]:
+    return {
+        "seq": seq,
+        "task_id": task.task_id,
+        "suite": suite,
+        "shard": shard,
+        "attempt": attempt,
+        "terminal": False,
+        "note": "resume_skip:terminal_exists",
+    }
+
+
 def _execute_task(task: EvalTask, timeout_s: float) -> tuple[bool, str, float]:
     if task.query.startswith("__timeout__") or timeout_s < 0.001:
         raise TimeoutError("deadline")
@@ -138,15 +186,13 @@ def run_suite_shard(
     for attempt, task in enumerate(tasks):
         existing = terminal_by_task.get(task.task_id)
         if existing is not None:
-            resume_row = {
-                "seq": seq,
-                "task_id": task.task_id,
-                "suite": suite_cfg.suite,
-                "shard": runner_cfg.shard,
-                "attempt": attempt,
-                "terminal": False,
-                "note": "resume_skip:terminal_exists",
-            }
+            resume_row = _resume_skip_row(
+                seq=seq,
+                task=task,
+                suite=suite_cfg.suite,
+                shard=runner_cfg.shard,
+                attempt=attempt,
+            )
             _append(out_path, resume_row)
             emitted.append(resume_row)
             seq += 1
@@ -187,13 +233,12 @@ def run_suite_shard(
         }
         if not ok:
             row["fail_tag"] = fail_tag or "OUTPUT_INVALID"
-        row["pi_ptr"] = build_eval_pointer_payload(
+        _with_pi_ptr(
+            row=row,
             suite=suite_cfg.suite,
             task_id=task.task_id,
-            run_id=f"{suite_cfg.suite}-s{runner_cfg.shard:05d}",
-            trace_ptr=str(out_path),
-            artifact_ids=[],
-            fail_tag=str(row.get("fail_tag", "")),
+            shard_path_str=str(out_path),
+            shard=runner_cfg.shard,
         )
 
         if not check_task_replay(task.task_id, row):
@@ -206,13 +251,12 @@ def run_suite_shard(
                 no_cite=False,
             )
             row["note"] = "replay_guard:parity_mismatch"
-            row["pi_ptr"] = build_eval_pointer_payload(
+            _with_pi_ptr(
+                row=row,
                 suite=suite_cfg.suite,
                 task_id=task.task_id,
-                run_id=f"{suite_cfg.suite}-s{runner_cfg.shard:05d}",
-                trace_ptr=str(out_path),
-                artifact_ids=[],
-                fail_tag=str(row.get("fail_tag", "")),
+                shard_path_str=str(out_path),
+                shard=runner_cfg.shard,
             )
 
         _append(out_path, row)

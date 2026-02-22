@@ -109,7 +109,7 @@ run = "python -m pirml.eval --suite browsecomp --dataset tests/fixtures/web/corp
 
 [tasks."eval-report"]
 description = "Aggregate eval shards into report+pareto artifacts"
-run = "python -m pirml.report out/eval/full/runs/*.ndjson --out out/eval/full/report.json"
+run = "python -m pirml.report out/eval/full/runs/browsecomp/*.ndjson --out out/eval/full/report.json"
 
 [tasks."ts-test"]
 description = "Run extension contract tests via tsx"

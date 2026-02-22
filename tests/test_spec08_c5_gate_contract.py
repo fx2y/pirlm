@@ -26,7 +26,15 @@ class Spec08C5GateContractTests(unittest.TestCase):
 
     def test_fast_scope_unchanged(self) -> None:
         fast_run = self.data["tasks"]["fast"]["run"]
-        for heavy in ("proto", "trace", "schemas", "replay", "eval-golden", "eval-full", "eval-report"):
+        for heavy in (
+            "proto",
+            "trace",
+            "schemas",
+            "replay",
+            "eval-golden",
+            "eval-full",
+            "eval-report",
+        ):
             self.assertNotIn(f"run {heavy}", fast_run)
 
 
