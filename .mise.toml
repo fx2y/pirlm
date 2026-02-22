@@ -98,3 +98,11 @@ run = "python -m scripts.tool_search_bench --web"
 [tasks."eval-web"]
 description = "Web evaluation matrix + winner selection"
 run = "python -m scripts.web_eval"
+
+[tasks."ts-test"]
+description = "Run extension contract tests via tsx"
+run = "npm test"
+
+[tasks."ts-types"]
+description = "Check extension types with tsc"
+run = "npm run lint"
