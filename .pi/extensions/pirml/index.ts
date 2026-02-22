@@ -2,9 +2,10 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { handlePirmlCommand } from "./command";
 import { createUIAdapter } from "./ui";
 import { handlePirmlRunTool, PirmlRunParams } from "./tool_run";
+import { evaluateToolCallPolicy } from "./policy_call";
+import { applyToolResultPolicy } from "./policy_result";
 
 export default function(pi: ExtensionAPI) {
-  // C4.T00: Gate feature behind PIRML_ENABLE_HYBRID_TOOL
   const isHybridEnabled = process.env.PIRML_ENABLE_HYBRID_TOOL === "1";
 
   pi.registerCommand("pirml", {
@@ -24,12 +25,12 @@ export default function(pi: ExtensionAPI) {
         ui,
         session: ctx.session,
         appendEntry,
+        reload: ctx.reload ? async () => { await ctx.reload(); } : undefined,
       });
     },
   });
 
   if (isHybridEnabled) {
-    // C4.T01: Register pirml_run tool
     pi.registerTool({
       name: "pirml_run",
       label: "PIRML Run",
@@ -37,21 +38,29 @@ export default function(pi: ExtensionAPI) {
       parameters: PirmlRunParams as any,
       execute: handlePirmlRunTool as any,
     });
+  }
 
-    // C4.T04: Add optional tool-call intercept guardrails
-    if ((pi as any).on) {
-      (pi as any).on("tool_call", async (e: any, ctx: any) => {
-        if (e.toolName === "pirml_run") {
-          const ok = await ctx.ui.confirm(
-            "PIRML Run Verification",
-            `PIRML tool call detected for task: ${e.input.task}. Proceed with execution?`
-          );
-          if (!ok) {
-            return { block: true, reason: "user blocked pirml run" };
-          }
+  if ((pi as any).on) {
+    (pi as any).on("tool_call", async (e: any, ctx: any) => {
+      const decision = evaluateToolCallPolicy(e ?? {});
+      if (decision.action === "block") {
+        return { block: true, reason: decision.reason ?? "blocked_by_policy" };
+      }
+      if (decision.action === "confirm") {
+        const ok = await ctx?.ui?.confirm?.(
+          "PIRML policy confirm",
+          decision.message ?? "Tool call requires confirmation."
+        );
+        if (!ok) {
+          return { block: true, reason: decision.reason ?? "confirm_denied" };
         }
-        return undefined;
-      });
-    }
+      }
+      return undefined;
+    });
+
+    (pi as any).on("tool_result", async (e: any) => {
+      const patch = applyToolResultPolicy({ result: e?.result });
+      return patch;
+    });
   }
 }
