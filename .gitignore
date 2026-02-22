@@ -15,3 +15,5 @@ spec-*/
 spec-0/*
 !spec-0/07*
 !spec-0/00-learnings.jsonl
+
+node_modules/

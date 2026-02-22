@@ -10,6 +10,10 @@ export interface SpawnResult {
   summary: string;
 }
 
+export const runtime = {
+  spawn: spawnPirml,
+};
+
 export async function spawnPirml(
   prog: string,
   outDir: string,

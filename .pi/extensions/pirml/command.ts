@@ -1,5 +1,5 @@
 import { UI } from "./ui";
-import { spawnPirml } from "./spawn";
+import { runtime } from "./spawn";
 import { buildCustomEntry, buildCustomMessage } from "./pointers";
 
 export interface CommandContext {
@@ -35,7 +35,7 @@ export async function handlePirmlCommand(
     
     // In a real environment, we'd probably have a way to generate a script
     // Or we expect the user to provide a path. Let's assume task is a path or name.
-    const res = await spawnPirml(task, outDir, artDir);
+    const res = await runtime.spawn(task, outDir, artDir);
     
     // C2.T04: Append CustomEntry pointer row
     const entry = buildCustomEntry(

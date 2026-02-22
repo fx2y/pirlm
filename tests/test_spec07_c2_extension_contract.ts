@@ -1,16 +1,21 @@
 import { handlePirmlCommand } from "../.pi/extensions/pirml/command";
 import { createUIAdapter } from "../.pi/extensions/pirml/ui";
+import { runtime } from "../.pi/extensions/pirml/spawn";
 
-// Manual mock for spawnPirml
-import * as spawnModule from "../.pi/extensions/pirml/spawn";
-(spawnModule as any).spawnPirml = async (prog: string, outDir: string, artDir: string) => ({
+// Manual mock for spawn with dynamic behavior
+let mockResult: any = {
   ok: true,
-  runId: outDir.split("/").pop() || "r123",
-  trace: `${outDir}/trace.ndjson`,
-  final: `${outDir}/final.json`,
-  artifacts: artDir,
+  runId: "r123",
+  trace: "trace.ndjson",
+  final: "final.json",
+  artifacts: "art",
   summary: "Mocked OK",
-});
+};
+
+runtime.spawn = async (prog: string, outDir: string, artDir: string) => {
+  const runId = outDir.split("/").pop() || "r123";
+  return { ...mockResult, runId, trace: `${outDir}/trace.ndjson`, final: `${outDir}/final.json` };
+};
 
 async function runTest() {
   console.log("Starting C2 Extension Contract Test (Manual Mocks)...");
@@ -43,6 +48,11 @@ async function runTest() {
   // 2. Test run
   console.log("\n--- TEST: RUN ---");
   notifyCount = 0;
+  mockResult = {
+    ok: true,
+    artifacts: "art",
+    summary: "Mocked OK",
+  };
   await handlePirmlCommand("run tests/prog_ok.py", mockCtx);
 
   if (appendedEntries.length < 2) {
@@ -68,15 +78,12 @@ async function runTest() {
   console.log("PASS: MessageEntry validated");
 
   console.log("\n--- TEST: FAILED RUN ---");
-  (spawnModule as any).spawnPirml = async (prog: string, outDir: string, artDir: string) => ({
+  mockResult = {
     ok: false,
-    runId: "rFail",
-    trace: `${outDir}/trace.ndjson`,
-    final: `${outDir}/final.json`,
-    artifacts: artDir,
+    artifacts: "art",
     error: { type: "runtime", msg: "Simulated Crash" },
     summary: "Mocked FAIL",
-  });
+  };
   
   appendedEntries.length = 0;
   await handlePirmlCommand("run tests/prog_fail.py", mockCtx);
@@ -91,6 +98,11 @@ async function runTest() {
 
   console.log("\nALL C2 EXTENSION CONTRACT TESTS PASSED");
 }
+
+runTest().catch(err => {
+  console.error("TEST FAILED:", err);
+  process.exit(1);
+});
 
 runTest().catch(err => {
   console.error("TEST FAILED:", err);
