@@ -9,6 +9,7 @@ from typing import Any, cast
 from .artifacts import ArtifactStore, default_layout
 from .artifacts.types import ArtifactSource
 from .cli_common import CliFailure, ThresholdConfig, emit_failure, strict_parse_args
+from .eval_pointers import build_eval_pointer_payload, validate_eval_pointer_refs
 from .reporting import aggregate_report, read_eval_rows
 
 
@@ -84,9 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     try:
         args = strict_parse_args(parser, argv)
-        report, pareto = aggregate_report(
-            read_eval_rows(list(args.inputs)), inputs=list(args.inputs)
-        )
+        rows = read_eval_rows(list(args.inputs))
+        report, pareto = aggregate_report(rows, inputs=list(args.inputs))
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         pareto_path = (
@@ -143,12 +143,32 @@ def main(argv: list[str] | None = None) -> int:
             "pareto_aid": pareto_aid,
             "art_root": str(Path(args.art_root)),
         }
+        for row in rows:
+            if not bool(row.get("terminal")):
+                continue
+            task_id = row.get("task_id")
+            if not isinstance(task_id, str) or not task_id:
+                continue
+            raw_ptr = row.get("pi_ptr")
+            if isinstance(raw_ptr, dict):
+                row["pi_ptr"] = build_eval_pointer_payload(
+                    suite=str(raw_ptr.get("suite", row.get("suite", ""))),
+                    task_id=task_id,
+                    run_id=str(raw_ptr.get("run_id", "")),
+                    trace_ptr=str(raw_ptr.get("trace_ptr", "")),
+                    artifact_ids=[
+                        x for x in cast(list[Any], raw_ptr.get("artifact_ids", [])) if isinstance(x, str)
+                    ],
+                    report_ptr=str(out_path),
+                    fail_tag=str(raw_ptr.get("fail_tag", row.get("fail_tag", ""))),
+                )
         out_path.write_text(
             json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
         )
         pareto_path.write_text(
             json.dumps(pareto, sort_keys=True, separators=(",", ":")), encoding="utf-8"
         )
+        validate_eval_pointer_refs(rows, art_root=args.art_root)
         if bool(report.get("compare", {}).get("ok", True)):
             return 0
         raise CliFailure("validation", "threshold regression", 1, retryable=False)

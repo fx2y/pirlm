@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pirml.cli_common import CliFailure, RunnerConfig, SuiteConfig
+from pirml.eval_pointers import build_eval_pointer_payload
 from pirml.runtime.rpc import canonical_json
 from pirml.web.score import score_exact_match
 from pirml.web.taxonomy import classify_fail_tag
@@ -186,6 +187,14 @@ def run_suite_shard(
         }
         if not ok:
             row["fail_tag"] = fail_tag or "OUTPUT_INVALID"
+        row["pi_ptr"] = build_eval_pointer_payload(
+            suite=suite_cfg.suite,
+            task_id=task.task_id,
+            run_id=f"{suite_cfg.suite}-s{runner_cfg.shard:05d}",
+            trace_ptr=str(out_path),
+            artifact_ids=[],
+            fail_tag=str(row.get("fail_tag", "")),
+        )
 
         if not check_task_replay(task.task_id, row):
             row["ok"] = False
@@ -197,6 +206,14 @@ def run_suite_shard(
                 no_cite=False,
             )
             row["note"] = "replay_guard:parity_mismatch"
+            row["pi_ptr"] = build_eval_pointer_payload(
+                suite=suite_cfg.suite,
+                task_id=task.task_id,
+                run_id=f"{suite_cfg.suite}-s{runner_cfg.shard:05d}",
+                trace_ptr=str(out_path),
+                artifact_ids=[],
+                fail_tag=str(row.get("fail_tag", "")),
+            )
 
         _append(out_path, row)
         emitted.append(row)
