@@ -366,8 +366,8 @@ def execute_with_retry(
         if payload.get("ok"):
             return payload, retries
 
-        error = payload.get("error")
-        retryable = isinstance(error, Mapping) and bool(error.get("retryable"))
+        error = cast(Mapping[str, Any] | None, payload.get("error"))
+        retryable = bool(error.get("retryable")) if error is not None else False
         if policy is not None and not policy.idempotent:
             retryable = False
         if not retryable or retries >= retry_budget:
@@ -550,7 +550,10 @@ def run_live(
                     remaining = _remaining_timeout_seconds(start_time, timeout)
                     tool_policy = runtime_policies.for_tool(tool) if runtime_policies else None
                     policy_timeout = tool_policy.timeout_s if tool_policy is not None else None
-                    if runtime_policies is not None and tool in runtime_policies.timeout_overrides_s:
+                    if (
+                        runtime_policies is not None
+                        and tool in runtime_policies.timeout_overrides_s
+                    ):
                         policy_timeout = runtime_policies.timeout_overrides_s[tool]
                     elif (
                         runtime_policies is not None

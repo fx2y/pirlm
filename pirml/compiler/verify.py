@@ -227,7 +227,7 @@ class CompileVerifier:
             self.add_error(
                 str(issue.get("code", "invalid_policy")),
                 str(issue.get("msg", "invalid policy")),
-                symbol=cast(str | None, issue.get("symbol")),
+                symbol=issue.get("symbol"),
             )
 
         if self.errors:
@@ -337,7 +337,8 @@ class CompileVerifier:
 
         awaited_calls.sort(key=lambda row: cast(int, row["lineno"]))
 
-        contract_deps = {t.replace(".", "_") for t in contract["tool_deps"]}
+        contract_tool_deps = contract.get("tool_deps") or []
+        contract_deps = {t.replace(".", "_") for t in contract_tool_deps}
         if ast_deps != contract_deps:
             missing = contract_deps - ast_deps
             extra_ast = ast_deps - contract_deps

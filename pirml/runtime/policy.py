@@ -10,6 +10,14 @@ from ..contracts.schemas import ErrorObject
 from .rpc import canonical_json
 
 
+def _tool_policy_dict() -> dict[str, ToolRuntimePolicy]:
+    return {}
+
+
+def _float_dict() -> dict[str, float]:
+    return {}
+
+
 class PolicyIssue(TypedDict, total=False):
     code: str
     msg: str
@@ -28,9 +36,9 @@ class ToolRuntimePolicy:
 @dataclass(frozen=True)
 class RuntimePolicySet:
     artifact_writes: tuple[str, ...] = ()
-    tool_policies: dict[str, ToolRuntimePolicy] = field(default_factory=dict)
+    tool_policies: dict[str, ToolRuntimePolicy] = field(default_factory=_tool_policy_dict)
     default_timeout_s: float | None = None
-    timeout_overrides_s: dict[str, float] = field(default_factory=dict)
+    timeout_overrides_s: dict[str, float] = field(default_factory=_float_dict)
 
     def for_tool(self, tool: str) -> ToolRuntimePolicy | None:
         return self.tool_policies.get(tool)
@@ -74,10 +82,14 @@ def parse_runtime_policy_set(
             rows: list[str] = []
             for item in cast(list[Any], raw_artifacts):
                 if not isinstance(item, str):
-                    issues.append(_issue("invalid_artifact_writes", "artifact_writes must be list[str]"))
+                    issues.append(
+                        _issue("invalid_artifact_writes", "artifact_writes must be list[str]")
+                    )
                     continue
                 if item in seen:
-                    issues.append(_issue("invalid_artifact_writes", "duplicate artifact_writes path", item))
+                    issues.append(
+                        _issue("invalid_artifact_writes", "duplicate artifact_writes path", item)
+                    )
                     continue
                 seen.add(item)
                 if not _path_is_within_artifacts(item):
@@ -99,19 +111,28 @@ def parse_runtime_policy_set(
             issues.append(_issue("invalid_tool_policies", "tool_policies must be object"))
         else:
             for tool_name, raw_policy in cast(Mapping[str, Any], raw_tool_policies).items():
-                if not isinstance(tool_name, str):
-                    issues.append(_issue("invalid_tool_policies", "tool_policies keys must be strings"))
-                    continue
                 if declared_tools is not None and tool_name not in declared_tools:
                     issues.append(
-                        _issue("unknown_tool_policy", "tool_policies key must be declared in tool_deps", tool_name)
+                        _issue(
+                            "unknown_tool_policy",
+                            "tool_policies key must be declared in tool_deps",
+                            tool_name,
+                        )
                     )
                 if not isinstance(raw_policy, Mapping):
-                    issues.append(_issue("invalid_tool_policy", "tool policy must be object", tool_name))
+                    issues.append(
+                        _issue("invalid_tool_policy", "tool policy must be object", tool_name)
+                    )
                     continue
 
                 policy_map = cast(Mapping[str, Any], raw_policy)
-                allowed_keys = {"idempotent", "cacheable", "max_payload_bytes", "retry", "timeout_s"}
+                allowed_keys = {
+                    "idempotent",
+                    "cacheable",
+                    "max_payload_bytes",
+                    "retry",
+                    "timeout_s",
+                }
                 extra_keys = set(policy_map.keys()) - allowed_keys
                 if extra_keys:
                     issues.append(
@@ -126,7 +147,9 @@ def parse_runtime_policy_set(
                 if "idempotent" in policy_map:
                     val = policy_map.get("idempotent")
                     if not isinstance(val, bool):
-                        issues.append(_issue("invalid_tool_policy", "idempotent must be bool", tool_name))
+                        issues.append(
+                            _issue("invalid_tool_policy", "idempotent must be bool", tool_name)
+                        )
                     else:
                         idempotent = val
 
@@ -134,7 +157,9 @@ def parse_runtime_policy_set(
                 if "cacheable" in policy_map:
                     val = policy_map.get("cacheable")
                     if not isinstance(val, bool):
-                        issues.append(_issue("invalid_tool_policy", "cacheable must be bool", tool_name))
+                        issues.append(
+                            _issue("invalid_tool_policy", "cacheable must be bool", tool_name)
+                        )
                     else:
                         cacheable = val
                         if cacheable:
@@ -151,11 +176,18 @@ def parse_runtime_policy_set(
                     val = policy_map.get("max_payload_bytes")
                     if not isinstance(val, int) or val <= 0:
                         issues.append(
-                            _issue("invalid_tool_policy", "max_payload_bytes must be positive int", tool_name)
+                            _issue(
+                                "invalid_tool_policy",
+                                "max_payload_bytes must be positive int",
+                                tool_name,
+                            )
                         )
                     else:
                         max_payload_bytes = val
-                        if budget_max_bytes_out is not None and max_payload_bytes > budget_max_bytes_out:
+                        if (
+                            budget_max_bytes_out is not None
+                            and max_payload_bytes > budget_max_bytes_out
+                        ):
                             issues.append(
                                 _issue(
                                     "policy_budget_conflict",
@@ -168,7 +200,9 @@ def parse_runtime_policy_set(
                 if "retry" in policy_map:
                     retry_val = policy_map.get("retry")
                     if not isinstance(retry_val, Mapping):
-                        issues.append(_issue("invalid_tool_policy", "retry must be object", tool_name))
+                        issues.append(
+                            _issue("invalid_tool_policy", "retry must be object", tool_name)
+                        )
                     else:
                         retry_map = cast(Mapping[str, Any], retry_val)
                         retry_extra = set(retry_map.keys()) - {"n"}
@@ -183,7 +217,11 @@ def parse_runtime_policy_set(
                         n_val = retry_map.get("n")
                         if not isinstance(n_val, int) or n_val < 0:
                             issues.append(
-                                _issue("invalid_tool_policy", "retry.n must be non-negative int", tool_name)
+                                _issue(
+                                    "invalid_tool_policy",
+                                    "retry.n must be non-negative int",
+                                    tool_name,
+                                )
                             )
                         else:
                             retry_n = n_val
@@ -200,7 +238,9 @@ def parse_runtime_policy_set(
                 if "timeout_s" in policy_map:
                     timeout_val = policy_map.get("timeout_s")
                     if not isinstance(timeout_val, (int, float)) or float(timeout_val) <= 0:
-                        issues.append(_issue("invalid_tool_policy", "timeout_s must be > 0", tool_name))
+                        issues.append(
+                            _issue("invalid_tool_policy", "timeout_s must be > 0", tool_name)
+                        )
                     else:
                         timeout_s = float(timeout_val)
 
@@ -222,7 +262,9 @@ def parse_runtime_policy_set(
             timeouts = cast(Mapping[str, Any], raw_timeouts)
             extra = set(timeouts.keys()) - {"default_s", "tool_overrides"}
             if extra:
-                issues.append(_issue("invalid_timeouts", f"unexpected timeout keys: {sorted(list(extra))}"))
+                issues.append(
+                    _issue("invalid_timeouts", f"unexpected timeout keys: {sorted(list(extra))}")
+                )
             if "default_s" in timeouts:
                 default_val = timeouts.get("default_s")
                 if not isinstance(default_val, (int, float)) or float(default_val) <= 0:
@@ -232,12 +274,11 @@ def parse_runtime_policy_set(
             if "tool_overrides" in timeouts:
                 overrides_val = timeouts.get("tool_overrides")
                 if not isinstance(overrides_val, Mapping):
-                    issues.append(_issue("invalid_timeouts", "timeouts.tool_overrides must be object"))
+                    issues.append(
+                        _issue("invalid_timeouts", "timeouts.tool_overrides must be object")
+                    )
                 else:
                     for tool_name, timeout_val in cast(Mapping[str, Any], overrides_val).items():
-                        if not isinstance(tool_name, str):
-                            issues.append(_issue("invalid_timeouts", "tool_overrides keys must be strings"))
-                            continue
                         if declared_tools is not None and tool_name not in declared_tools:
                             issues.append(
                                 _issue(
@@ -268,7 +309,7 @@ def parse_runtime_policy_set(
 
 
 def cache_key_for_call(tool: str, args: Mapping[str, Any]) -> str:
-    payload = {"tool": tool, "args": dict(cast(Mapping[str, Any], args))}
+    payload = {"tool": tool, "args": dict(args)}
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 

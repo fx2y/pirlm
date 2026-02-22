@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-import tomllib
 import unittest
-from pathlib import Path
+
+from tests.mise_contract import CI_RUN_EXPECTED, assert_ci_order_unchanged, load_mise
 
 
 class Spec08C5GateContractTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.data = tomllib.loads(Path(".mise.toml").read_text(encoding="utf-8"))
+        self.data = load_mise()
 
     def test_ci_order_unchanged(self) -> None:
-        ci_run = self.data["tasks"]["ci"]["run"]
-        expected = "mise run fmt && mise run lint && mise run types && mise run unit && mise run proto && mise run trace && mise run schemas && mise run replay"
-        self.assertEqual(ci_run, expected)
+        self.assertEqual(self.data["tasks"]["ci"]["run"], CI_RUN_EXPECTED)
+        assert_ci_order_unchanged(self.data)
 
     def test_ci_order_unchanged_with_new_eval_tasks(self) -> None:
         tasks = self.data["tasks"]

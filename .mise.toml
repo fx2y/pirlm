@@ -115,6 +115,14 @@ run = "python -m pirml.report out/eval/full/runs/browsecomp/*.ndjson --out out/e
 description = "Spec09 C3 smoke lane: tool init -> lint -> run"
 run = "python -m scripts.spec09_tool_smoke"
 
+[tasks."spec09-chaos"]
+description = "Spec09 C6 smoke chaos lanes: timeout/invalid/replay-mismatch/resume"
+run = "python -m scripts.spec09_eval_chaos && python -m scripts.replay_check"
+
+[tasks."spec09-report"]
+description = "Spec09 C6 smoke report lane: eval shard -> report artifacts"
+run = "python -m scripts.spec09_report_smoke && python -m scripts.artifact_rebuild --check"
+
 [tasks."ts-test"]
 description = "Run extension contract tests via tsx"
 run = "npm test"

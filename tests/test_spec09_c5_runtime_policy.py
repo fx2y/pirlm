@@ -8,7 +8,7 @@ from typing import Any
 from pirml.compiler.verify import verify_compile_output
 from pirml.runtime.exec import execute_with_retry
 from pirml.runtime.policy import ToolRuntimePolicy, cache_key_for_call, resolve_effective_timeout
-from pirml.runtime.tools import ToolRegistry
+from pirml.runtime.tools import ToolRegistry, ToolResult
 
 
 class Spec09C5RuntimePolicyTests(unittest.TestCase):
@@ -63,7 +63,9 @@ class Spec09C5RuntimePolicyTests(unittest.TestCase):
         # Fail-closed unsupported variant lane (C5.T04): cacheable remains explicit+typed unsupported.
         contract_bad = self._base_contract()
         contract_bad["tool_policies"] = {"pirml.echo": {"idempotent": True, "cacheable": True}}
-        _, errors_bad = verify_compile_output(self._prog(), json.dumps(contract_bad), ["pirml.echo"])
+        _, errors_bad = verify_compile_output(
+            self._prog(), json.dumps(contract_bad), ["pirml.echo"]
+        )
         self.assertTrue(any(e.get("code") == "unsupported_policy_variant" for e in errors_bad))
 
     def test_verifier_blocks_outside_artifact_root(self) -> None:
@@ -76,7 +78,7 @@ class Spec09C5RuntimePolicyTests(unittest.TestCase):
         registry = ToolRegistry()
         calls = {"n": 0}
 
-        def flaky(_args: Mapping[str, Any], _timeout: float | None) -> dict[str, Any]:
+        def flaky(_args: Mapping[str, Any], _timeout: float | None) -> ToolResult:
             calls["n"] += 1
             if calls["n"] < 3:
                 return {
@@ -102,7 +104,7 @@ class Spec09C5RuntimePolicyTests(unittest.TestCase):
         registry = ToolRegistry()
         calls = {"n": 0}
 
-        def should_not_run(_args: Mapping[str, Any], _timeout: float | None) -> dict[str, Any]:
+        def should_not_run(_args: Mapping[str, Any], _timeout: float | None) -> ToolResult:
             calls["n"] += 1
             return {"ok": True, "output": "unexpected"}
 
@@ -124,7 +126,7 @@ class Spec09C5RuntimePolicyTests(unittest.TestCase):
     def test_payload_cap_enforced(self) -> None:
         registry = ToolRegistry()
 
-        def large_output(_args: Mapping[str, Any], _timeout: float | None) -> dict[str, Any]:
+        def large_output(_args: Mapping[str, Any], _timeout: float | None) -> ToolResult:
             return {"ok": True, "output": "x" * 200}
 
         registry.register("echo", large_output)

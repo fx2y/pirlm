@@ -2,21 +2,39 @@ from __future__ import annotations
 
 import unittest
 
-from tests.spec09_placeholders import Spec09PlaceholderCase
+from tests.mise_contract import (
+    CI_RUN_EXPECTED,
+    assert_ci_order_unchanged,
+    assert_helper_tasks_additive_only,
+    load_mise,
+    mutated_with_ci_run,
+)
 
 
-class Spec09C6GateContractTests(Spec09PlaceholderCase):
-    @unittest.expectedFailure
+class Spec09C6GateContractTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.data = load_mise()
+
     def test_ci_order_unchanged(self) -> None:
-        self._todo("C6.I19 pass lane")
+        self.assertEqual(self.data["tasks"]["ci"]["run"], CI_RUN_EXPECTED)
+        assert_ci_order_unchanged(self.data)
 
-    @unittest.expectedFailure
     def test_helper_tasks_additive_only(self) -> None:
-        self._todo("C6.I19 additivity lane")
+        assert_helper_tasks_additive_only(
+            self.data, helpers=("spec09-golden", "spec09-chaos", "spec09-report")
+        )
+        for helper in ("spec09-golden", "spec09-chaos", "spec09-report"):
+            self.assertIn("smoke", str(self.data["tasks"][helper]["description"]).lower())
 
-    @unittest.expectedFailure
     def test_ci_order_drift_fails(self) -> None:
-        self._todo("C6.I19 fail lane")
+        drifted = mutated_with_ci_run(
+            self.data,
+            self.data["tasks"]["ci"]["run"].replace(
+                "mise run lint", "mise run unit && mise run lint", 1
+            ),
+        )
+        with self.assertRaises(AssertionError):
+            assert_ci_order_unchanged(drifted)
 
 
 if __name__ == "__main__":
