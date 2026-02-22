@@ -11,6 +11,7 @@ from pirml.ux.errors import TimeoutError
 from pirml.ux.runtime_bridge import replay, run_once
 from pirml.ux.types import PointerPayload
 
+
 class TestSpec07C1RuntimeShim(unittest.TestCase):
     def setUp(self):
         self.tmp = TemporaryDirectory()
