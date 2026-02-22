@@ -68,7 +68,9 @@ class Spec08C1CliSurfaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             dataset = root / "dataset.jsonl"
-            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            dataset.write_text(
+                '{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8"
+            )
             for flag in ("--jobs", "--shards", "--timeout-s", "--ctx-byte-cap"):
                 with self.subTest(flag=flag):
                     proc = self._run(
@@ -90,9 +92,13 @@ class Spec08C1CliSurfaceTests(unittest.TestCase):
             root = Path(tmp)
             dataset = root / "dataset.jsonl"
             cfg = root / "cfg.json"
-            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            dataset.write_text(
+                '{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8"
+            )
             cfg.write_text(
-                json.dumps({"suite": "golden50", "dataset": str(dataset), "jobs": "oops"}, sort_keys=True),
+                json.dumps(
+                    {"suite": "golden50", "dataset": str(dataset), "jobs": "oops"}, sort_keys=True
+                ),
                 encoding="utf-8",
             )
             proc = self._run("-m", "pirml.eval", "--config", str(cfg))
@@ -105,7 +111,9 @@ class Spec08C1CliSurfaceTests(unittest.TestCase):
             root = Path(tmp)
             dataset = root / "dataset.jsonl"
             cfg = root / "cfg.json"
-            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            dataset.write_text(
+                '{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8"
+            )
             cfg.write_text(
                 json.dumps(
                     {

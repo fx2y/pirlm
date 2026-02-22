@@ -3,7 +3,7 @@ from __future__ import annotations
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from .cli_common import CliFailure
 from .eval_runner import merge_rows
@@ -20,7 +20,7 @@ def _task_sort_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
 
 def read_eval_rows(paths: list[str]) -> list[dict[str, Any]]:
     rows = merge_rows([Path(p) for p in paths])
-    return [cast(dict[str, Any], row) for row in rows]
+    return [row for row in rows]
 
 
 def _terminal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

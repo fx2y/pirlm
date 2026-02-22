@@ -12,7 +12,7 @@ from pirml.runtime.rpc import canonical_json
 from pirml.web.score import score_exact_match
 from pirml.web.taxonomy import classify_fail_tag
 
-from .replay_guard import check_task_replay, replay_env
+from .replay_guard import ReplaySnapshot, check_task_replay
 from .timeouts import classify_timeout
 
 
@@ -21,6 +21,13 @@ class EvalTask:
     task_id: str
     query: str
     expected_answer: str
+
+
+@dataclass(frozen=True)
+class TaskOutcome:
+    ok: bool
+    fail_tag: str
+    latency_ms: float
 
 
 def stable_shard(task_id: str, shards: int) -> int:
@@ -107,7 +114,9 @@ def _load_existing(path: Path) -> tuple[int, dict[str, dict[str, Any]]]:
         row = cast(dict[str, Any], payload)
         seq = row.get("seq")
         if not isinstance(seq, int):
-            raise CliFailure("integrity", f"corrupt shard file {path}:{line_no}: seq must be int", 2)
+            raise CliFailure(
+                "integrity", f"corrupt shard file {path}:{line_no}: seq must be int", 2
+            )
         if seq != expected_seq:
             raise CliFailure(
                 "integrity",
@@ -180,7 +189,9 @@ def _resume_skip_row(
     }
 
 
-def _execute_task(task: EvalTask, timeout_s: float, *, ctx_byte_cap: int, seed: int) -> tuple[bool, str, float]:
+def _execute_task(
+    task: EvalTask, timeout_s: float, *, ctx_byte_cap: int, seed: int
+) -> tuple[bool, str, float]:
     if task.query.startswith("__timeout__") or timeout_s < 0.001:
         raise TimeoutError("deadline")
     _ = seed  # deterministic seam owner; stub runner has no RNG path yet.
@@ -194,6 +205,54 @@ def _execute_task(task: EvalTask, timeout_s: float, *, ctx_byte_cap: int, seed: 
     )
     ok = acc == 1.0
     return ok, ("" if ok else "OUTPUT_INVALID"), 1.0
+
+
+def _evaluate_task(
+    *,
+    task: EvalTask,
+    timeout_s: float,
+    ctx_byte_cap: int,
+    seed: int,
+) -> TaskOutcome:
+    fail_tag = ""
+    ok = False
+    timed_out = False
+    try:
+        ok, fail_tag, latency_ms = _execute_task(
+            task,
+            timeout_s,
+            ctx_byte_cap=ctx_byte_cap,
+            seed=seed,
+        )
+    except TimeoutError:
+        timed_out = True
+        latency_ms = 0.0
+    base_fail_tag = classify_timeout(timed_out=timed_out, base_fail_tag=fail_tag)
+    mapped_fail_tag = classify_fail_tag(
+        timed_out=timed_out,
+        replay_match=True,
+        invalid_output=base_fail_tag == "OUTPUT_INVALID",
+        no_cite=False,
+    )
+    if not ok and base_fail_tag == "CTX_BLOAT":
+        row_fail_tag = "CTX_BLOAT"
+    else:
+        row_fail_tag = mapped_fail_tag or ("OUTPUT_INVALID" if not ok else "")
+    return TaskOutcome(ok=ok, fail_tag=row_fail_tag, latency_ms=latency_ms)
+
+
+def _replay_snapshot(*, task: EvalTask, runner_cfg: RunnerConfig) -> ReplaySnapshot:
+    replay_outcome = _evaluate_task(
+        task=task,
+        timeout_s=runner_cfg.timeout_s,
+        ctx_byte_cap=runner_cfg.ctx_byte_cap,
+        seed=runner_cfg.seed,
+    )
+    return ReplaySnapshot(
+        ok=replay_outcome.ok,
+        fail_tag=replay_outcome.fail_tag,
+        latency_ms=replay_outcome.latency_ms,
+    )
 
 
 def run_suite_shard(
@@ -232,30 +291,12 @@ def run_suite_shard(
             seq += 1
             continue
 
-        fail_tag = ""
-        ok = False
-        timed_out = False
-        try:
-            ok, fail_tag, latency_ms = _execute_task(
-                task,
-                runner_cfg.timeout_s,
-                ctx_byte_cap=runner_cfg.ctx_byte_cap,
-                seed=runner_cfg.seed,
-            )
-        except TimeoutError:
-            timed_out = True
-            latency_ms = 0.0
-        base_fail_tag = classify_timeout(timed_out=timed_out, base_fail_tag=fail_tag)
-        fail_tag = classify_fail_tag(
-            timed_out=timed_out,
-            replay_match=True,
-            invalid_output=base_fail_tag == "OUTPUT_INVALID",
-            no_cite=False,
+        outcome = _evaluate_task(
+            task=task,
+            timeout_s=runner_cfg.timeout_s,
+            ctx_byte_cap=runner_cfg.ctx_byte_cap,
+            seed=runner_cfg.seed,
         )
-        if not ok and base_fail_tag == "CTX_BLOAT":
-            row_fail_tag = "CTX_BLOAT"
-        else:
-            row_fail_tag = fail_tag or ("OUTPUT_INVALID" if not ok else "")
 
         trace_path = _task_trace_path(
             out_dir=runner_cfg.out_dir,
@@ -271,20 +312,21 @@ def run_suite_shard(
             "suite": suite_cfg.suite,
             "shard": runner_cfg.shard,
             "attempt": attempt,
-            "ok": ok,
+            "ok": outcome.ok,
             "terminal": True,
-            "acc": 1.0 if ok else 0.0,
+            "acc": 1.0 if outcome.ok else 0.0,
             "fetches": 0,
             "bytes": 0,
             "chunks": 0,
             "cache_hit": 0.0,
             "cache_kind": cache_kind,
-            "latency_ms": latency_ms,
+            "latency_ms": outcome.latency_ms,
             "cost_usd": 0.0,
             "note": "",
+            "replay_match": True,
         }
-        if not ok:
-            row["fail_tag"] = row_fail_tag
+        if not outcome.ok:
+            row["fail_tag"] = outcome.fail_tag
         _with_pi_ptr(
             row=row,
             suite=suite_cfg.suite,
@@ -293,17 +335,30 @@ def run_suite_shard(
             shard=runner_cfg.shard,
         )
 
-        _ = replay_env()
-        if not check_task_replay(task.task_id, row):
+        replay_task = task
+        replay = check_task_replay(
+            task_id=task.task_id,
+            live=ReplaySnapshot(
+                ok=outcome.ok,
+                fail_tag=outcome.fail_tag,
+                latency_ms=outcome.latency_ms,
+            ),
+            replay_run=lambda task_for_replay=replay_task: _replay_snapshot(
+                task=task_for_replay,
+                runner_cfg=runner_cfg,
+            ),
+        )
+        if not replay.match:
             row["ok"] = False
             row["acc"] = 0.0
+            row["replay_match"] = False
             row["fail_tag"] = classify_fail_tag(
                 timed_out=False,
                 replay_match=False,
                 invalid_output=False,
                 no_cite=False,
             )
-            row["note"] = "replay_guard:parity_mismatch"
+            row["note"] = replay.note or "replay_guard:parity_mismatch"
             _with_pi_ptr(
                 row=row,
                 suite=suite_cfg.suite,

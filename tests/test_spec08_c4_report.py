@@ -40,12 +40,12 @@ class Spec08C4ReportTests(unittest.TestCase):
                                 "attempt": 0,
                                 "shard": 1,
                                 "suite": "golden50",
-                        "ok": False,
-                        "terminal": True,
-                        "fail_tag": "NO_CITE",
-                        "latency_ms": 100.0,
-                        "cost_usd": 0.02,
-                    },
+                                "ok": False,
+                                "terminal": True,
+                                "fail_tag": "NO_CITE",
+                                "latency_ms": 100.0,
+                                "cost_usd": 0.02,
+                            },
                             sort_keys=True,
                         ),
                         json.dumps(
@@ -176,7 +176,10 @@ class Spec08C4ReportTests(unittest.TestCase):
                 "cost_usd": 0.0,
             }
             shard.write_text(
-                json.dumps(row, sort_keys=True) + "\n" + json.dumps({**row, "seq": 2}, sort_keys=True) + "\n",
+                json.dumps(row, sort_keys=True)
+                + "\n"
+                + json.dumps({**row, "seq": 2}, sort_keys=True)
+                + "\n",
                 encoding="utf-8",
             )
             proc = self._run("-m", "pirml.report", str(shard), "--out", str(out))

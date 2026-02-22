@@ -194,7 +194,9 @@ class Spec08C2RunnerTests(unittest.TestCase):
                 seed=0,
                 out_dir=str(root / "out"),
             )
-            out = shard_path(out_dir=runner_cfg.out_dir, suite=suite_cfg.suite, shard=runner_cfg.shard)
+            out = shard_path(
+                out_dir=runner_cfg.out_dir, suite=suite_cfg.suite, shard=runner_cfg.shard
+            )
             out.parent.mkdir(parents=True, exist_ok=True)
             row = {
                 "seq": 1,
@@ -235,13 +237,18 @@ class Spec08C2RunnerTests(unittest.TestCase):
                 seed=0,
                 out_dir=str(root / "out"),
             )
-            out = shard_path(out_dir=runner_cfg.out_dir, suite=suite_cfg.suite, shard=runner_cfg.shard)
+            out = shard_path(
+                out_dir=runner_cfg.out_dir, suite=suite_cfg.suite, shard=runner_cfg.shard
+            )
             out.parent.mkdir(parents=True, exist_ok=True)
             out.write_text(
                 "\n".join(
                     [
                         json.dumps({"seq": 1, "task_id": "Q1", "terminal": False}, sort_keys=True),
-                        json.dumps({"seq": 3, "task_id": "Q1", "terminal": True, "ok": True}, sort_keys=True),
+                        json.dumps(
+                            {"seq": 3, "task_id": "Q1", "terminal": True, "ok": True},
+                            sort_keys=True,
+                        ),
                     ]
                 )
                 + "\n",
