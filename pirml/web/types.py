@@ -57,6 +57,18 @@ class EvalRow(TypedDict):
     bytes: int
     chunks: int
     cache_hit: float
+    fail_tag: str
+    timeout_s: float
+    latency_ms: float
+    cost_usd: float
+    tokens_in: int
+    tokens_out: int
+    bytes_into_model: int
+    tool_calls: int
+    fanout_peak: int
+    invalid_output: bool
+    no_cite: bool
+    replay_match: bool
     note: NotRequired[str]
 
 

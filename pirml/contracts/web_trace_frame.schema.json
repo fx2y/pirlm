@@ -4,7 +4,17 @@
   "type": "object",
   "required": ["op", "ts", "seq", "ms"],
   "properties": {
-    "op": { "enum": ["search_call", "search_result", "fetch_call", "fetch_result"] },
+    "op": {
+      "enum": [
+        "search_call",
+        "search_result",
+        "fetch_call",
+        "fetch_result",
+        "etl_result",
+        "score_result",
+        "metrics"
+      ]
+    },
     "ts": { "type": "integer" },
     "seq": { "type": "integer" },
     "ms": { "type": "integer" },
@@ -13,6 +23,13 @@
     "provider": { "type": "string" },
     "status": { "type": "integer" },
     "bytes": { "type": "integer" },
+    "bytes_fetched": { "type": "integer" },
+    "bytes_extracted": { "type": "integer" },
+    "bytes_into_model": { "type": "integer" },
+    "tokens_in": { "type": "integer" },
+    "tokens_out": { "type": "integer" },
+    "tool_calls": { "type": "integer" },
+    "fanout_peak": { "type": "integer" },
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "cache_hit": { "type": "boolean" },
     "error": { "type": "string" }

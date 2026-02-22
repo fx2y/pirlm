@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol
@@ -27,7 +26,6 @@ def rank_and_diversify(
     tracer: WebTracer | None = None,
 ) -> list[SerpRow]:
     """Deterministic SERP normalization with URL dedup + domain cap."""
-    start_ms = int(time.time() * 1000)
     unique: dict[str, SerpRow] = {}
     # Use (rank, source, url) as tie-break
     for row in sorted(rows, key=lambda item: (item["rank"], item["source"], item["url"])):
@@ -59,7 +57,7 @@ def rank_and_diversify(
             "search_result",
             status=200,
             bytes=0,
-            ms=int(time.time() * 1000) - start_ms,
+            ms=len(selected),
         )
     return selected
 
@@ -93,14 +91,13 @@ class SearxJsonProvider:
             tracer.emit("search_call", q=query, provider="searx_json")
 
         if self.base_url:
-            start_ms = int(time.time() * 1000)
             try:
                 rows = await asyncio.to_thread(self._sync_search, query)
                 if tracer:
                     tracer.emit(
                         "search_result",
                         status=200,
-                        ms=int(time.time() * 1000) - start_ms,
+                        ms=len(rows),
                     )
                 return rows
             except Exception as e:
@@ -109,7 +106,7 @@ class SearxJsonProvider:
                         "search_result",
                         status=0,
                         error=str(e),
-                        ms=int(time.time() * 1000) - start_ms,
+                        ms=0,
                     )
                 raise
         else:

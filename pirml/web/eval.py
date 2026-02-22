@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Mapping
 
 from pirml.web.types import CiteRow, EvalRow
 
 
-def metric_tuple(row: EvalRow) -> tuple[float, int, int, int, float]:
-    return (row["acc"], -row["bytes"], -row["chunks"], -row["fetches"], row["cache_hit"])
+def metric_tuple(row: EvalRow | Mapping[str, float | int]) -> tuple[float, int, int, int, float]:
+    return (
+        float(row["acc"]),
+        -int(row["bytes"]),
+        -int(row["chunks"]),
+        -int(row["fetches"]),
+        float(row["cache_hit"]),
+    )
 
 
 def evidence_accuracy(*, query: str, citations: list[CiteRow]) -> float:

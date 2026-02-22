@@ -13,6 +13,7 @@ class WebContractSchemaTests(unittest.TestCase):
             "web_extract.schema.json",
             "web_citation.schema.json",
             "web_eval.schema.json",
+            "web_trace_frame.schema.json",
         ]
         for name in schema_names:
             path = Path("pirml/contracts") / name

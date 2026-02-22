@@ -74,8 +74,6 @@ def select_winner(all_results: list[dict[str, Any]]) -> str:
         all_results,
         key=lambda r: metric_tuple(
             {
-                "qid": "",
-                "plan": r["plan_id"],
                 "acc": float(r["acc"]),
                 "fetches": int(r["fetches"]),
                 "bytes": int(r["bytes"]),

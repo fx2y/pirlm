@@ -104,6 +104,18 @@ async def main():
         "bytes": 100,
         "chunks": 1,
         "cache_hit": 0.0,
+        "fail_tag": "",
+        "timeout_s": 0.0,
+        "latency_ms": 1.0,
+        "cost_usd": 0.000002,
+        "tokens_in": 1,
+        "tokens_out": 1,
+        "bytes_into_model": 105,
+        "tool_calls": 1,
+        "fanout_peak": 1,
+        "invalid_output": False,
+        "no_cite": len(result["citations"]) == 0,
+        "replay_match": True,
     }
     with (out_dir / "eval.ndjson").open("w", encoding="utf-8") as f:
         f.write(canonical_json(eval_row) + "\n")

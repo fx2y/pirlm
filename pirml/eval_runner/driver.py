@@ -8,9 +8,10 @@ from typing import Any, cast
 
 from pirml.cli_common import CliFailure, RunnerConfig, SuiteConfig
 from pirml.runtime.rpc import canonical_json
+from pirml.web.score import score_exact_match
+from pirml.web.taxonomy import classify_fail_tag
 
 from .replay_guard import check_task_replay
-from .timeouts import classify_timeout
 
 
 @dataclass(frozen=True)
@@ -104,9 +105,13 @@ def _append(path: Path, row: dict[str, Any]) -> None:
 def _execute_task(task: EvalTask, timeout_s: float) -> tuple[bool, str, float]:
     if task.query.startswith("__timeout__") or timeout_s < 0.001:
         raise TimeoutError("deadline")
-    normalized_expected = " ".join(task.expected_answer.strip().lower().split())
-    normalized_query = " ".join(task.query.strip().lower().split())
-    ok = normalized_expected in normalized_query
+    acc = score_exact_match(
+        expected=task.expected_answer,
+        actual=task.query,
+        citation_count=1,
+        require_citations=False,
+    )
+    ok = acc == 1.0
     return ok, ("" if ok else "OUTPUT_INVALID"), 1.0
 
 
@@ -154,7 +159,12 @@ def run_suite_shard(
         except TimeoutError:
             timed_out = True
             latency_ms = 0.0
-        fail_tag = classify_timeout(timed_out=timed_out, base_fail_tag=fail_tag)
+        fail_tag = classify_fail_tag(
+            timed_out=timed_out,
+            replay_match=True,
+            invalid_output=fail_tag == "OUTPUT_INVALID",
+            no_cite=False,
+        )
 
         row: dict[str, Any] = {
             "seq": seq,
@@ -180,7 +190,12 @@ def run_suite_shard(
         if not check_task_replay(task.task_id, row):
             row["ok"] = False
             row["acc"] = 0.0
-            row["fail_tag"] = "REPLAY_MISMATCH"
+            row["fail_tag"] = classify_fail_tag(
+                timed_out=False,
+                replay_match=False,
+                invalid_output=False,
+                no_cite=False,
+            )
             row["note"] = "replay_guard:parity_mismatch"
 
         _append(out_path, row)

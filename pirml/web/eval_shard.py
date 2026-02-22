@@ -10,10 +10,12 @@ from typing import Any, cast
 from pirml.clock import SequenceClock
 from pirml.runtime.rpc import canonical_json
 from pirml.web.cache import cache_factory
-from pirml.web.eval import deterministic_jitter, evidence_accuracy
+from pirml.web.eval import deterministic_jitter
 from pirml.web.fetch import CachedDocFetcher, FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
+from pirml.web.score import score_exact_match
 from pirml.web.search import provider_factory
+from pirml.web.taxonomy import classify_fail_tag
 from pirml.web.trace import WebTracer
 from pirml.web.types import EvalRow, SerpRow
 
@@ -91,9 +93,29 @@ async def run_shard(
         cache_hits = sum(1 for f in fetch_results if cast(Any, f).get("cache_hit"))
         cache_hit_rate = cache_hits / len(fetch_results) if fetch_results else 0.0
 
-        # Accuracy is evidence-linked: derived from extracted citation quotes.
-        acc = evidence_accuracy(query=query, citations=final["citations"])
+        expected = str(q_row.get("expected_answer", query))
+        acc = score_exact_match(
+            expected=expected,
+            actual=final["answer"],
+            citation_count=len(final["citations"]),
+            require_citations=True,
+        )
         acc = round(min(1.0, acc + deterministic_jitter(qid=qid, seed=seed)), 4)
+        if acc > 1.0:
+            acc = 1.0
+
+        tokens_in = len(query.split())
+        tokens_out = len(final["answer"].split())
+        bytes_into_model = len(query.encode("utf-8")) + total_bytes
+        no_cite = len(final["citations"]) == 0
+        invalid_output = acc <= 0.0 and not no_cite
+        fail_tag = classify_fail_tag(
+            timed_out=False,
+            replay_match=True,
+            invalid_output=invalid_output,
+            no_cite=no_cite,
+        )
+        fanout_peak = min(plan.max_parallel_fetch, max(fetches, 1))
 
         eval_row: EvalRow = {
             "qid": qid,
@@ -103,6 +125,18 @@ async def run_shard(
             "bytes": total_bytes,
             "chunks": len(final["citations"]),
             "cache_hit": cache_hit_rate,
+            "fail_tag": fail_tag,
+            "timeout_s": 0.0,
+            "latency_ms": float(len(frames)),
+            "cost_usd": round((tokens_in + tokens_out) * 0.000001, 8),
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+            "bytes_into_model": bytes_into_model,
+            "tool_calls": fetches,
+            "fanout_peak": fanout_peak,
+            "invalid_output": invalid_output,
+            "no_cite": no_cite,
+            "replay_match": True,
         }
         results.append(eval_row)
 

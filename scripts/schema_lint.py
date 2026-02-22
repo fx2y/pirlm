@@ -8,6 +8,37 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
 
+WEB_TRACE_OPS: tuple[str, ...] = (
+    "search_call",
+    "search_result",
+    "fetch_call",
+    "fetch_result",
+    "etl_result",
+    "score_result",
+    "metrics",
+)
+WEB_EVAL_REQUIRED_FIELDS: tuple[str, ...] = (
+    "qid",
+    "plan",
+    "acc",
+    "fetches",
+    "bytes",
+    "chunks",
+    "cache_hit",
+    "fail_tag",
+    "timeout_s",
+    "latency_ms",
+    "cost_usd",
+    "tokens_in",
+    "tokens_out",
+    "bytes_into_model",
+    "tool_calls",
+    "fanout_peak",
+    "invalid_output",
+    "no_cite",
+    "replay_match",
+)
+
 
 def validate_error(error: Any, path: str) -> list[str]:
     errors: list[str] = []
@@ -361,8 +392,8 @@ def validate_web_eval_row(row: Any, index: int) -> list[str]:
     if not isinstance(row, dict):
         return [f"{path} must be an object"]
     errors: list[str] = []
-    allowed = {"qid", "plan", "acc", "fetches", "bytes", "chunks", "cache_hit", "note"}
-    required = {"qid", "plan", "acc", "fetches", "bytes", "chunks", "cache_hit"}
+    required = set(WEB_EVAL_REQUIRED_FIELDS)
+    allowed = required | {"note"}
     for req in required:
         if req not in row:
             errors.append(f"{path} missing required '{req}'")
@@ -383,6 +414,30 @@ def validate_web_eval_row(row: Any, index: int) -> list[str]:
         errors.append(f"{path}.chunks must be an integer")
     if "cache_hit" in row and not _is_number(row["cache_hit"]):
         errors.append(f"{path}.cache_hit must be numeric")
+    if "fail_tag" in row and not isinstance(row["fail_tag"], str):
+        errors.append(f"{path}.fail_tag must be a string")
+    if "timeout_s" in row and not _is_number(row["timeout_s"]):
+        errors.append(f"{path}.timeout_s must be numeric")
+    if "latency_ms" in row and not _is_number(row["latency_ms"]):
+        errors.append(f"{path}.latency_ms must be numeric")
+    if "cost_usd" in row and not _is_number(row["cost_usd"]):
+        errors.append(f"{path}.cost_usd must be numeric")
+    if "tokens_in" in row and not _is_int(row["tokens_in"]):
+        errors.append(f"{path}.tokens_in must be an integer")
+    if "tokens_out" in row and not _is_int(row["tokens_out"]):
+        errors.append(f"{path}.tokens_out must be an integer")
+    if "bytes_into_model" in row and not _is_int(row["bytes_into_model"]):
+        errors.append(f"{path}.bytes_into_model must be an integer")
+    if "tool_calls" in row and not _is_int(row["tool_calls"]):
+        errors.append(f"{path}.tool_calls must be an integer")
+    if "fanout_peak" in row and not _is_int(row["fanout_peak"]):
+        errors.append(f"{path}.fanout_peak must be an integer")
+    if "invalid_output" in row and not isinstance(row["invalid_output"], bool):
+        errors.append(f"{path}.invalid_output must be a boolean")
+    if "no_cite" in row and not isinstance(row["no_cite"], bool):
+        errors.append(f"{path}.no_cite must be a boolean")
+    if "replay_match" in row and not isinstance(row["replay_match"], bool):
+        errors.append(f"{path}.replay_match must be a boolean")
     if "note" in row and not isinstance(row["note"], str):
         errors.append(f"{path}.note must be a string")
     return errors
@@ -403,6 +458,13 @@ def validate_web_trace_row(row: Any, index: int) -> list[str]:
         "provider",
         "status",
         "bytes",
+        "bytes_fetched",
+        "bytes_extracted",
+        "bytes_into_model",
+        "tokens_in",
+        "tokens_out",
+        "tool_calls",
+        "fanout_peak",
         "sha256",
         "cache_hit",
         "error",
@@ -414,9 +476,8 @@ def validate_web_trace_row(row: Any, index: int) -> list[str]:
     for key in cast(Mapping[str, Any], row):
         if key not in allowed:
             errors.append(f"{path} has unexpected field '{key}'")
-    valid_ops = {"search_call", "search_result", "fetch_call", "fetch_result"}
-    if "op" in row and row["op"] not in valid_ops:
-        errors.append(f"{path}.op must be one of {sorted(valid_ops)}")
+    if "op" in row and row["op"] not in WEB_TRACE_OPS:
+        errors.append(f"{path}.op must be one of {list(WEB_TRACE_OPS)}")
     if "ts" in row and not _is_int(row["ts"]):
         errors.append(f"{path}.ts must be an integer")
     if "seq" in row and not _is_int(row["seq"]):
@@ -433,6 +494,20 @@ def validate_web_trace_row(row: Any, index: int) -> list[str]:
         errors.append(f"{path}.status must be an integer")
     if "bytes" in row and not _is_int(row["bytes"]):
         errors.append(f"{path}.bytes must be an integer")
+    if "bytes_fetched" in row and not _is_int(row["bytes_fetched"]):
+        errors.append(f"{path}.bytes_fetched must be an integer")
+    if "bytes_extracted" in row and not _is_int(row["bytes_extracted"]):
+        errors.append(f"{path}.bytes_extracted must be an integer")
+    if "bytes_into_model" in row and not _is_int(row["bytes_into_model"]):
+        errors.append(f"{path}.bytes_into_model must be an integer")
+    if "tokens_in" in row and not _is_int(row["tokens_in"]):
+        errors.append(f"{path}.tokens_in must be an integer")
+    if "tokens_out" in row and not _is_int(row["tokens_out"]):
+        errors.append(f"{path}.tokens_out must be an integer")
+    if "tool_calls" in row and not _is_int(row["tool_calls"]):
+        errors.append(f"{path}.tool_calls must be an integer")
+    if "fanout_peak" in row and not _is_int(row["fanout_peak"]):
+        errors.append(f"{path}.fanout_peak must be an integer")
     if "sha256" in row and not _has_sha256(row["sha256"]):
         errors.append(f"{path}.sha256 must be a 64-char lower-hex digest")
     if "cache_hit" in row and not isinstance(row["cache_hit"], bool):

@@ -137,6 +137,18 @@ class TestSchemaLintCLI(unittest.TestCase):
                         "bytes": 12,
                         "chunks": 1,
                         "cache_hit": 1.0,
+                        "fail_tag": "",
+                        "timeout_s": 0.0,
+                        "latency_ms": 1.0,
+                        "cost_usd": 0.000001,
+                        "tokens_in": 1,
+                        "tokens_out": 1,
+                        "bytes_into_model": 16,
+                        "tool_calls": 1,
+                        "fanout_peak": 1,
+                        "invalid_output": False,
+                        "no_cite": False,
+                        "replay_match": True,
                     }
                 )
                 + "\n",
