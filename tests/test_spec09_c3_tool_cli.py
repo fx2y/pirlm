@@ -1,42 +1,136 @@
 from __future__ import annotations
 
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
 import unittest
+from pathlib import Path
 
-from tests.spec09_placeholders import Spec09PlaceholderCase
+from pirml.toolsearch.loader import catalog_hash, load_catalog
 
 
-class Spec09C3ToolCliTests(Spec09PlaceholderCase):
-    @unittest.expectedFailure
+class Spec09C3ToolCliTests(unittest.TestCase):
+    @staticmethod
+    def _run(*args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [sys.executable, "-m", "pirml", *args],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    @staticmethod
+    def _copy_catalog(src: Path, dst: Path) -> None:
+        dst.mkdir(parents=True, exist_ok=True)
+        for path in sorted(src.glob("*.json")):
+            shutil.copy2(path, dst / path.name)
+
     def test_init_deterministic(self) -> None:
-        self._todo("C3.I08 pass lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            a = root / "a"
+            b = root / "b"
+            proc_a = self._run("tool", "init", "demo.echo", "--tools-dir", str(a))
+            proc_b = self._run("tool", "init", "demo.echo", "--tools-dir", str(b))
+            self.assertEqual(proc_a.returncode, 0, proc_a.stderr)
+            self.assertEqual(proc_b.returncode, 0, proc_b.stderr)
 
-    @unittest.expectedFailure
+            self.assertEqual(
+                (a / "demo.echo.json").read_bytes(),
+                (b / "demo.echo.json").read_bytes(),
+            )
+            self.assertEqual(
+                (a / "demo.echo.README.md").read_bytes(),
+                (b / "demo.echo.README.md").read_bytes(),
+            )
+            self.assertEqual(
+                (a / "demo.echo.examples.jsonl").read_bytes(),
+                (b / "demo.echo.examples.jsonl").read_bytes(),
+            )
+
     def test_init_catalog_loadable(self) -> None:
-        self._todo("C3.I08 loader lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            proc = self._run("tool", "init", "demo.echo", "--tools-dir", str(tools_dir))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            catalog = load_catalog(tools_dir, strict=True)
+            self.assertIn("demo.echo", catalog)
 
-    @unittest.expectedFailure
     def test_init_scaffold_loadable_by_catalog_loader(self) -> None:
-        self._todo("C3.X4 enforce lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            proc = self._run("tool", "init", "svc.list_items", "--tools-dir", str(tools_dir))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            catalog = load_catalog(tools_dir, strict=True)
+            tool = catalog["svc.list_items"]
+            self.assertEqual(tool.get("name"), "svc.list_items")
+            self.assertIn("input_schema", tool)
 
-    @unittest.expectedFailure
     def test_init_rejects_invalid_name(self) -> None:
-        self._todo("C3.I08 fail lane")
+        proc = self._run("tool", "init", "BadName", "--tools-dir", "tools")
+        self.assertEqual(proc.returncode, 1)
+        err = json.loads(proc.stderr.strip())
+        self.assertEqual(err["type"], "validation")
+        self.assertIn("dotted namespace", err["msg"])
 
-    @unittest.expectedFailure
     def test_tool_lint_pass_fail_codes(self) -> None:
-        self._todo("C3.I09 pass/fail lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tools_dir = root / "tools"
+            self._copy_catalog(Path("tools"), tools_dir)
+            pass_proc = self._run("tool", "lint", "--tools-dir", str(tools_dir))
+            self.assertEqual(pass_proc.returncode, 0, pass_proc.stderr)
+            pass_json = json.loads(pass_proc.stdout.strip())
+            self.assertTrue(bool(pass_json["ok"]))
 
-    @unittest.expectedFailure
+            bad_manifest = json.loads((tools_dir / "pirml.echo.json").read_text(encoding="utf-8"))
+            bad_manifest["input_examples"] = [{"text": "only-one"}]
+            (tools_dir / "pirml.echo.json").write_text(
+                json.dumps(bad_manifest, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            fail_proc = self._run("tool", "lint", "--tools-dir", str(tools_dir))
+            self.assertEqual(fail_proc.returncode, 1)
+            err = json.loads(fail_proc.stderr.strip())
+            self.assertEqual(err["type"], "validation")
+
     def test_pack_deterministic(self) -> None:
-        self._todo("C3.I10 pass lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tools_dir = root / "tools"
+            self._copy_catalog(Path("tools"), tools_dir)
+            out_a = root / "a.json"
+            out_b = root / "b.json"
+            proc_a = self._run("tool", "pack", "--tools-dir", str(tools_dir), "--out", str(out_a))
+            proc_b = self._run("tool", "pack", "--tools-dir", str(tools_dir), "--out", str(out_b))
+            self.assertEqual(proc_a.returncode, 0, proc_a.stderr)
+            self.assertEqual(proc_b.returncode, 0, proc_b.stderr)
+            self.assertEqual(out_a.read_bytes(), out_b.read_bytes())
 
-    @unittest.expectedFailure
     def test_pack_includes_catalog_hash(self) -> None:
-        self._todo("C3.I10 hash lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tools_dir = root / "tools"
+            self._copy_catalog(Path("tools"), tools_dir)
+            out_path = root / "pack.json"
+            proc = self._run("tool", "pack", "--tools-dir", str(tools_dir), "--out", str(out_path))
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            packed = json.loads(out_path.read_text(encoding="utf-8"))
+            self.assertIn("catalog_hash", packed)
+            self.assertEqual(
+                packed["catalog_hash"], catalog_hash(load_catalog(tools_dir, strict=True))
+            )
 
-    @unittest.expectedFailure
     def test_pack_fails_without_catalog(self) -> None:
-        self._todo("C3.I10 fail lane")
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing"
+            out_path = Path(tmp) / "pack.json"
+            proc = self._run("tool", "pack", "--tools-dir", str(missing), "--out", str(out_path))
+            self.assertEqual(proc.returncode, 2)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "config")
 
 
 if __name__ == "__main__":

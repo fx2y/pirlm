@@ -111,6 +111,10 @@ run = "python -m pirml.eval --suite browsecomp --dataset tests/fixtures/web/corp
 description = "Aggregate eval shards into report+pareto artifacts"
 run = "python -m pirml.report out/eval/full/runs/browsecomp/*.ndjson --out out/eval/full/report.json"
 
+[tasks."spec09-golden"]
+description = "Spec09 C3 smoke lane: tool init -> lint -> run"
+run = "python -m scripts.spec09_tool_smoke"
+
 [tasks."ts-test"]
 description = "Run extension contract tests via tsx"
 run = "npm test"

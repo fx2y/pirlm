@@ -20,11 +20,17 @@ from .protocol import (
 )
 from .tools import default_registry
 
-_PRODUCT_COMMANDS = frozenset({"doctor", "install-pi-ext", "uninstall-pi-ext", "replay"})
+_PRODUCT_COMMANDS = frozenset({"doctor", "install-pi-ext", "uninstall-pi-ext", "replay", "tool"})
 
 
 def build_legacy_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="pirml")
+    parser = argparse.ArgumentParser(
+        prog="pirml",
+        epilog=(
+            "Product commands: doctor, install-pi-ext, uninstall-pi-ext, replay, "
+            "tool <init|lint|pack>"
+        ),
+    )
     parser.add_argument("--prog", help="Path to Python program file defining PROGRAM list")
     parser.add_argument("--replay", help="Replay from existing trace.ndjson")
     parser.add_argument(
@@ -151,6 +157,12 @@ def _cmd_replay(argv: list[str]) -> int:
     return int(proc.returncode)
 
 
+def _cmd_tool(argv: list[str]) -> int:
+    from .product.cmd_tool import run_tool_command
+
+    return run_tool_command(argv)
+
+
 def _dispatch_product(cmd: str, argv: list[str]) -> int:
     if cmd == "doctor":
         return _cmd_doctor(argv)
@@ -160,6 +172,8 @@ def _dispatch_product(cmd: str, argv: list[str]) -> int:
         return _cmd_uninstall(argv)
     if cmd == "replay":
         return _cmd_replay(argv)
+    if cmd == "tool":
+        return _cmd_tool(argv)
     raise CliFailure("config", f"unknown command: {cmd}", 2, retryable=False)
 
 
