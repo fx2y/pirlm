@@ -51,7 +51,11 @@ def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, 
 def strict_parse_args(
     parser: argparse.ArgumentParser, argv: list[str] | None = None
 ) -> argparse.Namespace:
-    args, unknown = parser.parse_known_args(argv)
+    parser.exit_on_error = False
+    try:
+        args, unknown = parser.parse_known_args(argv)
+    except argparse.ArgumentError as exc:
+        raise CliFailure("config", str(exc), 2, retryable=False) from exc
     if unknown:
         unknown_joined = " ".join(unknown)
         raise CliFailure("config", f"unknown args: {unknown_joined}", 2, retryable=False)
@@ -142,7 +146,38 @@ def load_eval_config(path: str) -> dict[str, Any]:
     unknown = sorted(set(payload_map.keys()) - allowed)
     if unknown:
         raise CliFailure("config", f"unknown config keys: {','.join(unknown)}", 2, retryable=False)
+    _validate_eval_config_types(payload_map)
     return payload_map
+
+
+def _validate_eval_config_types(payload_map: dict[str, Any]) -> None:
+    scalar_types: dict[str, type[Any]] = {
+        "suite": str,
+        "dataset": str,
+        "require_citations": bool,
+        "jobs": int,
+        "shards": int,
+        "shard": int,
+        "ctx_byte_cap": int,
+        "seed": int,
+        "out_dir": str,
+    }
+    for key, value in payload_map.items():
+        if key == "timeout_s":
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise CliFailure("config", "config.timeout_s must be number", 2, retryable=False)
+            continue
+        expected = scalar_types[key]
+        if expected is int:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise CliFailure("config", f"config.{key} must be int", 2, retryable=False)
+            continue
+        if expected is bool:
+            if not isinstance(value, bool):
+                raise CliFailure("config", f"config.{key} must be bool", 2, retryable=False)
+            continue
+        if expected is str and not isinstance(value, str):
+            raise CliFailure("config", f"config.{key} must be str", 2, retryable=False)
 
 
 def emit_failure(err: CliFailure) -> int:

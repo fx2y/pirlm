@@ -20,6 +20,11 @@ def _cfg_value(cli_value: Any, cfg: dict[str, Any], key: str) -> Any:
     return cli_value if cli_value is not None else cfg.get(key)
 
 
+def _cfg_or_default(cli_value: Any, cfg: dict[str, Any], key: str, default: Any) -> Any:
+    value = _cfg_value(cli_value, cfg, key)
+    return default if value is None else value
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pirml.eval")
     parser.add_argument("--config", help="Path to eval config JSON")
@@ -39,20 +44,18 @@ def _run(args: argparse.Namespace) -> int:
     cfg = load_eval_config(args.config) if args.config else {}
 
     suite_cfg = parse_suite_config(
-        suite=str(_cfg_value(args.suite, cfg, "suite") or ""),
+        suite=str(_cfg_or_default(args.suite, cfg, "suite", "")),
         dataset=_cfg_value(args.dataset, cfg, "dataset"),
-        require_citations=bool(
-            _cfg_value(None, cfg, "require_citations") if "require_citations" in cfg else True
-        ),
+        require_citations=bool(_cfg_or_default(None, cfg, "require_citations", True)),
     )
     runner_cfg = parse_runner_config(
-        jobs=int(_cfg_value(args.jobs, cfg, "jobs") or 1),
-        shards=int(_cfg_value(args.shards, cfg, "shards") or 1),
-        shard=int(_cfg_value(args.shard, cfg, "shard") or 0),
-        timeout_s=float(_cfg_value(args.timeout_s, cfg, "timeout_s") or 180.0),
-        ctx_byte_cap=int(_cfg_value(args.ctx_byte_cap, cfg, "ctx_byte_cap") or 120_000),
-        seed=int(_cfg_value(args.seed, cfg, "seed") or 0),
-        out_dir=str(_cfg_value(args.out_dir, cfg, "out_dir") or "out/eval"),
+        jobs=int(_cfg_or_default(args.jobs, cfg, "jobs", 1)),
+        shards=int(_cfg_or_default(args.shards, cfg, "shards", 1)),
+        shard=int(_cfg_or_default(args.shard, cfg, "shard", 0)),
+        timeout_s=float(_cfg_or_default(args.timeout_s, cfg, "timeout_s", 180.0)),
+        ctx_byte_cap=int(_cfg_or_default(args.ctx_byte_cap, cfg, "ctx_byte_cap", 120_000)),
+        seed=int(_cfg_or_default(args.seed, cfg, "seed", 0)),
+        out_dir=str(_cfg_or_default(args.out_dir, cfg, "out_dir", "out/eval")),
     )
 
     rows = run_suite_shard(suite_cfg=suite_cfg, runner_cfg=runner_cfg, cache_kind="sqlite")

@@ -75,6 +75,36 @@ class TestSpec08C6PiPointers(unittest.TestCase):
             with self.assertRaisesRegex(Exception, "missing ref"):
                 validate_eval_pointer_refs(rows, art_root=root / "art")
 
+    def test_report_pointer_validation_fails_on_directory_ref(self) -> None:
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            trace_dir = root / "trace_dir"
+            trace_dir.mkdir(parents=True)
+            report_path = root / "report.json"
+            report_path.write_text("{}", encoding="utf-8")
+            rows = [
+                {
+                    "terminal": True,
+                    "task_id": "q1",
+                    "suite": "golden50",
+                    "ok": True,
+                    "acc": 1.0,
+                    "latency_ms": 0.0,
+                    "cost_usd": 0.0,
+                    "pi_ptr": build_eval_pointer_payload(
+                        suite="golden50",
+                        task_id="q1",
+                        run_id="golden50-s00000",
+                        trace_ptr=str(trace_dir),
+                        artifact_ids=[],
+                        report_ptr=str(report_path),
+                        fail_tag="",
+                    ),
+                }
+            ]
+            with self.assertRaisesRegex(Exception, "non-file ref"):
+                validate_eval_pointer_refs(rows, art_root=root / "art")
+
 
 if __name__ == "__main__":
     unittest.main()

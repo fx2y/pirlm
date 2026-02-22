@@ -5,6 +5,7 @@ FAIL_TAGS: tuple[str, ...] = (
     "FETCH_BLOCKED",
     "ETL_BAD",
     "TOOL_MISUSE",
+    "NO_CITE",
     "HALLUCINATION",
     "TIMEOUT",
     "OUTPUT_INVALID",
@@ -21,7 +22,7 @@ def classify_fail_tag(
     if not replay_match:
         return "REPLAY_MISMATCH"
     if no_cite:
-        return "HALLUCINATION"
+        return "NO_CITE"
     if invalid_output:
         return "OUTPUT_INVALID"
     return ""

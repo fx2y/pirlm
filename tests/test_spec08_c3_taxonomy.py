@@ -25,6 +25,16 @@ class Spec08C3TaxonomyTests(unittest.TestCase):
         )
         self.assertEqual(tag, "")
 
+    def test_no_cite_has_explicit_tag(self) -> None:
+        tag = classify_fail_tag(
+            timed_out=False,
+            replay_match=True,
+            invalid_output=False,
+            no_cite=True,
+        )
+        self.assertEqual(tag, "NO_CITE")
+        self.assertIn(tag, FAIL_TAGS)
+
 
 if __name__ == "__main__":
     unittest.main()

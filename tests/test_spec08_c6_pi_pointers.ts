@@ -54,7 +54,7 @@ function test_payload_not_in_context(): void {
   const payload = samplePayload(tmp);
   const msg = buildEvalTaskCustomMessage(payload, `${"x".repeat(400)}\n  multiline`);
   if (msg.message.content.includes("\n")) throw new Error("message must be one-line");
-  if (msg.message.content.length > 180) throw new Error("message unexpectedly large");
+  if (msg.message.content.length > 120) throw new Error("message unexpectedly large");
   const details = JSON.stringify(msg.message.details);
   if (details.includes(payload.trace_ptr) || details.includes(payload.report_ptr)) {
     throw new Error("details leaked heavy pointers");

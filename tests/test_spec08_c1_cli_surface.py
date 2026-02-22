@@ -57,6 +57,71 @@ class Spec08C1CliSurfaceTests(unittest.TestCase):
         err = json.loads(proc.stderr.strip())
         self.assertEqual(err["type"], "config")
 
+    def test_eval_argparse_type_error_is_typed_config_error(self) -> None:
+        proc = self._run("-m", "pirml.eval", "--jobs", "oops")
+        self.assertEqual(proc.returncode, 2)
+        self.assertTrue(proc.stderr.strip())
+        err = json.loads(proc.stderr.strip())
+        self.assertEqual(err["type"], "config")
+
+    def test_eval_zero_flags_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dataset = root / "dataset.jsonl"
+            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            for flag in ("--jobs", "--shards", "--timeout-s", "--ctx-byte-cap"):
+                with self.subTest(flag=flag):
+                    proc = self._run(
+                        "-m",
+                        "pirml.eval",
+                        "--suite",
+                        "golden50",
+                        "--dataset",
+                        str(dataset),
+                        flag,
+                        "0",
+                    )
+                    self.assertEqual(proc.returncode, 1, proc.stderr)
+                    err = json.loads(proc.stderr.strip())
+                    self.assertEqual(err["type"], "validation")
+
+    def test_eval_config_type_is_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dataset = root / "dataset.jsonl"
+            cfg = root / "cfg.json"
+            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            cfg.write_text(
+                json.dumps({"suite": "golden50", "dataset": str(dataset), "jobs": "oops"}, sort_keys=True),
+                encoding="utf-8",
+            )
+            proc = self._run("-m", "pirml.eval", "--config", str(cfg))
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "config")
+
+    def test_eval_config_bool_string_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            dataset = root / "dataset.jsonl"
+            cfg = root / "cfg.json"
+            dataset.write_text('{"task_id":"Q1","query":"q","expected_answer":"a"}\n', encoding="utf-8")
+            cfg.write_text(
+                json.dumps(
+                    {
+                        "suite": "golden50",
+                        "dataset": str(dataset),
+                        "require_citations": "false",
+                    },
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+            proc = self._run("-m", "pirml.eval", "--config", str(cfg))
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "config")
+
     def test_select_golden_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -22,12 +22,17 @@ class Spec08C5GoldenDeltaTests(unittest.TestCase):
             if line.strip()
         ]
         self.assertEqual(len(rows), 50)
+        seen_ids: set[str] = set()
         for row in rows:
             self.assertIn("task_id", row)
             self.assertIn("expected_answer", row)
+            self.assertIn("query", row)
             self.assertIn("citation_required", row)
             self.assertIn("category", row)
             self.assertIn("failure_mode", row)
+            self.assertNotEqual(row["query"], row["expected_answer"])
+            self.assertNotIn(row["task_id"], seen_ids)
+            seen_ids.add(row["task_id"])
 
     def test_acc_regression_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

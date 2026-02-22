@@ -101,11 +101,11 @@ run = "python -m scripts.web_eval"
 
 [tasks."eval-golden"]
 description = "Golden50 regression eval (explicit dataset, additive helper)"
-run = "python -m pirml.eval --suite golden50 --dataset spec-0/08/golden50.jsonl --jobs 8 --out-dir out/eval/golden50"
+run = "python -m pirml.eval --suite golden50 --dataset spec-0/08/golden50.jsonl --jobs 1 --out-dir out/eval/golden50"
 
 [tasks."eval-full"]
 description = "Full BrowseComp eval (requires explicit dataset override in local config)"
-run = "python -m pirml.eval --suite browsecomp --dataset tests/fixtures/web/corpus.jsonl --jobs 32 --out-dir out/eval/full"
+run = "python -m pirml.eval --suite browsecomp --dataset tests/fixtures/web/corpus.jsonl --jobs 1 --out-dir out/eval/full"
 
 [tasks."eval-report"]
 description = "Aggregate eval shards into report+pareto artifacts"

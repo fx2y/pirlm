@@ -12,7 +12,8 @@ from pirml.runtime.rpc import canonical_json
 from pirml.web.score import score_exact_match
 from pirml.web.taxonomy import classify_fail_tag
 
-from .replay_guard import check_task_replay
+from .replay_guard import check_task_replay, replay_env
+from .timeouts import classify_timeout
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ def _first_nonempty_str(row: dict[str, Any], *keys: str) -> str | None:
 
 def load_tasks(*, dataset: Path, shards: int, shard: int) -> list[EvalTask]:
     tasks: list[EvalTask] = []
+    seen_task_ids: set[str] = set()
     for line_no, line in enumerate(dataset.read_text(encoding="utf-8").splitlines(), start=1):
         text = line.strip()
         if not text:
@@ -61,11 +63,14 @@ def load_tasks(*, dataset: Path, shards: int, shard: int) -> list[EvalTask]:
             raise CliFailure(
                 "validation", f"dataset row {line_no} missing non-empty task_id/qid", 1
             )
-        query = _first_nonempty_str(row, "query", "question", "prompt", "expected_answer", "answer")
+        if raw_task_id in seen_task_ids:
+            raise CliFailure("validation", f"duplicate task_id in dataset: {raw_task_id}", 1)
+        seen_task_ids.add(raw_task_id)
+        query = _first_nonempty_str(row, "query", "question", "prompt")
         if query is None:
             raise CliFailure(
                 "validation",
-                f"dataset row {line_no} missing non-empty query/question/prompt/expected_answer",
+                f"dataset row {line_no} missing non-empty query/question/prompt",
                 1,
             )
         expected_answer = _first_nonempty_str(row, "expected_answer", "answer", "query") or query
@@ -85,7 +90,7 @@ def _is_terminal(row: dict[str, Any]) -> bool:
 def _load_existing(path: Path) -> tuple[int, dict[str, dict[str, Any]]]:
     if not path.exists():
         return 1, {}
-    max_seq = 0
+    expected_seq = 1
     terminal_by_task: dict[str, dict[str, Any]] = {}
     for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         text = line.strip()
@@ -101,12 +106,25 @@ def _load_existing(path: Path) -> tuple[int, dict[str, dict[str, Any]]]:
             )
         row = cast(dict[str, Any], payload)
         seq = row.get("seq")
-        if isinstance(seq, int) and seq > max_seq:
-            max_seq = seq
+        if not isinstance(seq, int):
+            raise CliFailure("integrity", f"corrupt shard file {path}:{line_no}: seq must be int", 2)
+        if seq != expected_seq:
+            raise CliFailure(
+                "integrity",
+                f"corrupt shard file {path}:{line_no}: seq drift expected {expected_seq} got {seq}",
+                2,
+            )
+        expected_seq += 1
         task_id = row.get("task_id")
         if isinstance(task_id, str) and task_id and _is_terminal(row):
+            if task_id in terminal_by_task:
+                raise CliFailure(
+                    "integrity",
+                    f"corrupt shard file {path}:{line_no}: duplicate terminal task_id {task_id}",
+                    2,
+                )
             terminal_by_task[task_id] = row
-    return max_seq + 1, terminal_by_task
+    return expected_seq, terminal_by_task
 
 
 def _append(path: Path, row: dict[str, Any]) -> None:
@@ -123,18 +141,29 @@ def _with_pi_ptr(
     row: dict[str, Any],
     suite: str,
     task_id: str,
-    shard_path_str: str,
+    trace_path_str: str,
     shard: int,
 ) -> dict[str, Any]:
     row["pi_ptr"] = build_eval_pointer_payload(
         suite=suite,
         task_id=task_id,
         run_id=_run_id(suite=suite, shard=shard),
-        trace_ptr=shard_path_str,
+        trace_ptr=trace_path_str,
         artifact_ids=[],
         fail_tag=str(row.get("fail_tag", "")),
     )
     return row
+
+
+def _task_trace_path(*, out_dir: Path, suite: str, shard: int, task_id: str) -> Path:
+    trace_dir = out_dir / "traces" / suite / f"shard-{shard:05d}"
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    return trace_dir / f"{task_id}.ndjson"
+
+
+def _write_task_trace_stub(path: Path, *, task: EvalTask, seq: int) -> None:
+    frame = {"seq": seq, "task_id": task.task_id, "query": task.query}
+    path.write_text(canonical_json(frame) + "\n", encoding="utf-8")
 
 
 def _resume_skip_row(
@@ -151,9 +180,12 @@ def _resume_skip_row(
     }
 
 
-def _execute_task(task: EvalTask, timeout_s: float) -> tuple[bool, str, float]:
+def _execute_task(task: EvalTask, timeout_s: float, *, ctx_byte_cap: int, seed: int) -> tuple[bool, str, float]:
     if task.query.startswith("__timeout__") or timeout_s < 0.001:
         raise TimeoutError("deadline")
+    _ = seed  # deterministic seam owner; stub runner has no RNG path yet.
+    if len(task.query.encode("utf-8")) > ctx_byte_cap:
+        return False, "CTX_BLOAT", 1.0
     acc = score_exact_match(
         expected=task.expected_answer,
         actual=task.query,
@@ -172,6 +204,8 @@ def run_suite_shard(
 ) -> list[dict[str, Any]]:
     if cache_kind != "sqlite":
         raise CliFailure("unsupported", f"unsupported cache kind: {cache_kind}", 1)
+    if runner_cfg.jobs != 1:
+        raise CliFailure("unsupported", "--jobs > 1 not implemented for single-shard runner", 1)
 
     out_path = shard_path(
         out_dir=runner_cfg.out_dir,
@@ -202,16 +236,34 @@ def run_suite_shard(
         ok = False
         timed_out = False
         try:
-            ok, fail_tag, latency_ms = _execute_task(task, runner_cfg.timeout_s)
+            ok, fail_tag, latency_ms = _execute_task(
+                task,
+                runner_cfg.timeout_s,
+                ctx_byte_cap=runner_cfg.ctx_byte_cap,
+                seed=runner_cfg.seed,
+            )
         except TimeoutError:
             timed_out = True
             latency_ms = 0.0
+        base_fail_tag = classify_timeout(timed_out=timed_out, base_fail_tag=fail_tag)
         fail_tag = classify_fail_tag(
             timed_out=timed_out,
             replay_match=True,
-            invalid_output=fail_tag == "OUTPUT_INVALID",
+            invalid_output=base_fail_tag == "OUTPUT_INVALID",
             no_cite=False,
         )
+        if not ok and base_fail_tag == "CTX_BLOAT":
+            row_fail_tag = "CTX_BLOAT"
+        else:
+            row_fail_tag = fail_tag or ("OUTPUT_INVALID" if not ok else "")
+
+        trace_path = _task_trace_path(
+            out_dir=runner_cfg.out_dir,
+            suite=suite_cfg.suite,
+            shard=runner_cfg.shard,
+            task_id=task.task_id,
+        )
+        _write_task_trace_stub(trace_path, task=task, seq=seq)
 
         row: dict[str, Any] = {
             "seq": seq,
@@ -232,15 +284,16 @@ def run_suite_shard(
             "note": "",
         }
         if not ok:
-            row["fail_tag"] = fail_tag or "OUTPUT_INVALID"
+            row["fail_tag"] = row_fail_tag
         _with_pi_ptr(
             row=row,
             suite=suite_cfg.suite,
             task_id=task.task_id,
-            shard_path_str=str(out_path),
+            trace_path_str=str(trace_path),
             shard=runner_cfg.shard,
         )
 
+        _ = replay_env()
         if not check_task_replay(task.task_id, row):
             row["ok"] = False
             row["acc"] = 0.0
@@ -255,7 +308,7 @@ def run_suite_shard(
                 row=row,
                 suite=suite_cfg.suite,
                 task_id=task.task_id,
-                shard_path_str=str(out_path),
+                trace_path_str=str(trace_path),
                 shard=runner_cfg.shard,
             )
 

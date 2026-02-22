@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, cast
 
 from .cli_common import CliFailure
+from .eval_runner import merge_rows
 
 
 def _task_sort_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
@@ -19,26 +19,8 @@ def _task_sort_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
 
 
 def read_eval_rows(paths: list[str]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for raw in sorted(paths):
-        path = Path(raw)
-        if not path.is_file():
-            raise CliFailure("unsupported", f"missing input: {path}", 1, retryable=False)
-        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            text = line.strip()
-            if not text:
-                continue
-            try:
-                row = json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise CliFailure(
-                    "validation", f"invalid NDJSON row in {path}:{line_no}: {exc}", 1
-                ) from exc
-            if not isinstance(row, dict):
-                raise CliFailure("validation", f"row must be object in {path}:{line_no}", 1)
-            rows.append(cast(dict[str, Any], row))
-    rows.sort(key=_task_sort_key)
-    return rows
+    rows = merge_rows([Path(p) for p in paths])
+    return [cast(dict[str, Any], row) for row in rows]
 
 
 def _terminal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -46,6 +28,17 @@ def _terminal_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         row for row in rows if bool(row.get("terminal")) and isinstance(row.get("task_id"), str)
     ]
     terminal.sort(key=_task_sort_key)
+    seen: set[tuple[str, str]] = set()
+    for row in terminal:
+        key = (str(row.get("suite", "")), str(row.get("task_id", "")))
+        if key in seen:
+            raise CliFailure(
+                "integrity",
+                f"duplicate terminal row for suite/task_id: {key[0]}/{key[1]}",
+                2,
+                retryable=False,
+            )
+        seen.add(key)
     return terminal
 
 

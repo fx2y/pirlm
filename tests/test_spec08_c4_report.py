@@ -40,12 +40,12 @@ class Spec08C4ReportTests(unittest.TestCase):
                                 "attempt": 0,
                                 "shard": 1,
                                 "suite": "golden50",
-                                "ok": False,
-                                "terminal": True,
-                                "fail_tag": "TIMEOUT",
-                                "latency_ms": 100.0,
-                                "cost_usd": 0.02,
-                            },
+                        "ok": False,
+                        "terminal": True,
+                        "fail_tag": "NO_CITE",
+                        "latency_ms": 100.0,
+                        "cost_usd": 0.02,
+                    },
                             sort_keys=True,
                         ),
                         json.dumps(
@@ -133,13 +133,16 @@ class Spec08C4ReportTests(unittest.TestCase):
             self.assertEqual(report["acc"], 0.333333)
             self.assertEqual(report["median_latency"], 40.0)
             self.assertEqual(report["median_cost"], 0.01)
-            self.assertEqual(report["timeout_rate"], 0.666667)
+            self.assertEqual(report["timeout_rate"], 0.333333)
+            self.assertEqual(report["no_cite_rate"], 0.333333)
             self.assertTrue(isinstance(report["artifacts"]["report_aid"], str))
             self.assertTrue(isinstance(report["artifacts"]["pareto_aid"], str))
-            self.assertEqual(report["fail_pareto"][0]["fail_tag"], "TIMEOUT")
-            self.assertEqual(report["fail_pareto"][0]["count"], 2)
-            self.assertEqual(report["fail_pareto"][0]["top_task_ids"][0]["task_id"], "T2")
+            self.assertEqual(report["fail_pareto"][0]["fail_tag"], "NO_CITE")
+            self.assertEqual(report["fail_pareto"][0]["count"], 1)
             self.assertEqual(report["meta"]["notes"], [])
+            tags = {row["fail_tag"]: row["count"] for row in report["fail_pareto"]}
+            self.assertEqual(tags["NO_CITE"], 1)
+            self.assertEqual(tags["TIMEOUT"], 1)
 
     def test_missing_input_typed_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,6 +158,42 @@ class Spec08C4ReportTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 1)
             err = json.loads(proc.stderr.strip())
             self.assertEqual(err["type"], "unsupported")
+
+    def test_duplicate_terminal_rows_fail_integrity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shard = root / "rows.ndjson"
+            out = root / "report.json"
+            row = {
+                "seq": 1,
+                "task_id": "T1",
+                "attempt": 0,
+                "shard": 0,
+                "suite": "golden50",
+                "ok": True,
+                "terminal": True,
+                "latency_ms": 1.0,
+                "cost_usd": 0.0,
+            }
+            shard.write_text(
+                json.dumps(row, sort_keys=True) + "\n" + json.dumps({**row, "seq": 2}, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            proc = self._run("-m", "pirml.report", str(shard), "--out", str(out))
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "integrity")
+
+    def test_corrupt_ndjson_is_integrity_code2(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shard = root / "rows.ndjson"
+            out = root / "report.json"
+            shard.write_text("{not json}\n", encoding="utf-8")
+            proc = self._run("-m", "pirml.report", str(shard), "--out", str(out))
+            self.assertEqual(proc.returncode, 2, proc.stderr)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "integrity")
 
 
 if __name__ == "__main__":

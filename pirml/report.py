@@ -145,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             "pareto_aid": pareto_aid,
             "art_root": str(Path(args.art_root)),
         }
+        pointer_index: list[dict[str, Any]] = []
         for row in rows:
             if not bool(row.get("terminal")):
                 continue
@@ -159,14 +160,31 @@ def main(argv: list[str] | None = None) -> int:
                     task_id=task_id,
                     run_id=str(raw_ptr_map.get("run_id", "")),
                     trace_ptr=str(raw_ptr_map.get("trace_ptr", "")),
-                    artifact_ids=[
-                        x
-                        for x in cast(list[Any], raw_ptr_map.get("artifact_ids", []))
-                        if isinstance(x, str)
-                    ],
+                    artifact_ids=sorted(
+                        {
+                            *[
+                                x
+                                for x in cast(list[Any], raw_ptr_map.get("artifact_ids", []))
+                                if isinstance(x, str)
+                            ],
+                            report_aid,
+                            pareto_aid,
+                        }
+                    ),
                     report_ptr=str(out_path),
                     fail_tag=str(raw_ptr_map.get("fail_tag", row.get("fail_tag", ""))),
                 )
+                pointer_index.append(
+                    {
+                        "task_id": task_id,
+                        "suite": str(row.get("suite", "")),
+                        "pi_ptr": row["pi_ptr"],
+                    }
+                )
+        pointer_index_path = out_path.with_name(f"{out_path.stem}.pointers.json")
+        pointer_index_path.write_text(
+            json.dumps(pointer_index, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        )
         out_path.write_text(
             json.dumps(report, sort_keys=True, separators=(",", ":")), encoding="utf-8"
         )

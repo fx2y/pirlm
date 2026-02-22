@@ -68,6 +68,10 @@ def validate_eval_pointer_refs(rows: list[dict[str, Any]], *, art_root: str | Pa
                     raise CliFailure(
                         "unsupported", f"missing ref {path_key}: {path}", 1, retryable=False
                     )
+                if not path.is_file():
+                    raise CliFailure(
+                        "unsupported", f"non-file ref {path_key}: {path}", 1, retryable=False
+                    )
             for aid in cast(list[str], artifact_items):
                 if store.get_meta(aid) is None:
                     raise CliFailure(

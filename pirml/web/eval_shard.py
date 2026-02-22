@@ -10,7 +10,6 @@ from typing import Any, cast
 from pirml.clock import SequenceClock
 from pirml.runtime.rpc import canonical_json
 from pirml.web.cache import cache_factory
-from pirml.web.eval import deterministic_jitter
 from pirml.web.fetch import CachedDocFetcher, FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.score import score_exact_match
@@ -100,9 +99,8 @@ async def run_shard(
             citation_count=len(final["citations"]),
             require_citations=True,
         )
-        acc = round(min(1.0, acc + deterministic_jitter(qid=qid, seed=seed)), 4)
-        if acc > 1.0:
-            acc = 1.0
+        # Persist exact score; tie-break jitter belongs in selector/ranker tuples, not eval evidence.
+        acc = round(acc, 4)
 
         tokens_in = len(query.split())
         tokens_out = len(final["answer"].split())

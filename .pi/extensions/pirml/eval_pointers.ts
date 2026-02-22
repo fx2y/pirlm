@@ -47,13 +47,14 @@ export function buildEvalTaskCustomMessage(
 ): EvalTaskCustomMessage {
   const base = `EVAL ${payload.suite}/${payload.task_id} ${payload.fail_tag || "OK"}`;
   const oneLine = (summary ?? "").replace(/\s+/g, " ").trim();
-  const capped = oneLine.slice(0, 120);
+  const budget = Math.max(0, 120 - base.length - 2);
+  const capped = oneLine.slice(0, budget);
   return {
     type: "custom_message",
     message: {
       role: "custom",
       customType: "pirml.eval_task",
-      content: capped ? `${base}: ${capped}` : base,
+      content: capped ? `${base}: ${capped}` : base.slice(0, 120),
       display: true,
       details: {
         suite: payload.suite,
