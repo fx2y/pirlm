@@ -45,3 +45,13 @@ class RuntimeError(UxError):
 class ArtifactError(UxError):
     def __init__(self, msg: str):
         super().__init__(type="artifact", msg=msg, retryable=False)
+
+
+class UnsupportedError(UxError):
+    def __init__(self, msg: str):
+        super().__init__(type="unsupported", msg=msg, retryable=False)
+
+
+class NotImplementedError(UxError):
+    def __init__(self, msg: str):
+        super().__init__(type="not_implemented", msg=msg, retryable=False)
