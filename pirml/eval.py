@@ -13,6 +13,7 @@ from .cli_common import (
     parse_suite_config,
     strict_parse_args,
 )
+from .eval_runner import run_suite_shard
 
 
 def _cfg_value(cli_value: Any, cfg: dict[str, Any], key: str) -> Any:
@@ -54,26 +55,10 @@ def _run(args: argparse.Namespace) -> int:
         out_dir=str(_cfg_value(args.out_dir, cfg, "out_dir") or "out/eval"),
     )
 
-    out_runs = runner_cfg.out_dir / "runs" / suite_cfg.suite
-    out_runs.mkdir(parents=True, exist_ok=True)
-    out_path = out_runs / f"shard-{runner_cfg.shard:05d}.ndjson"
-    row = {
-        "ok": False,
-        "task_id": "CONFIG",
-        "suite": suite_cfg.suite,
-        "dataset": str(suite_cfg.dataset),
-        "shard": runner_cfg.shard,
-        "error": {
-            "type": "unsupported",
-            "msg": "C1 CLI scaffold only; runner ships in C2",
-            "retryable": False,
-        },
-        "fail_tag": "UNSUPPORTED",
-    }
-    out_path.write_text(
-        json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8"
-    )
-    raise CliFailure("unsupported", "C1 CLI scaffold only; runner ships in C2", 1, retryable=False)
+    rows = run_suite_shard(suite_cfg=suite_cfg, runner_cfg=runner_cfg, cache_kind="sqlite")
+    if not rows:
+        raise CliFailure("unsupported", "no tasks assigned to selected shard", 1, retryable=False)
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
