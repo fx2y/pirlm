@@ -5,79 +5,83 @@ import re
 import tempfile
 import unittest
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from pirml.runtime.lint import lint_catalog, lint_manifest
 from pirml.runtime.load import load_catalog
 
 
+def _base_manifest(name: str = "svc.tool", **overrides: object) -> dict[str, Any]:
+    manifest: dict[str, Any] = {
+        "name": name,
+        "description": (
+            "This is a tool. It does things. When NOT to use: avoid this for unrelated workflows."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"a": {"type": "string"}},
+            "required": ["a"],
+        },
+        "input_examples": [{"a": "v1"}, {"a": "v2"}, {"a": "v3"}],
+        "idempotent": True,
+        "cacheable": True,
+        "max_payload_bytes": 4096,
+        "timeout_s": 5,
+        "retry": {"max_attempts": 1},
+        "allowed_callers": ["code_exec"],
+        "defer_loading": True,
+    }
+    manifest.update(overrides)
+    return manifest
+
+
 class TestToolSearchLint(unittest.TestCase):
     def test_manifest_validation(self) -> None:
-        # Good manifest
-        m_good = {
-            "name": "svc.tool",
-            "description": "This is a tool. It does things. When NOT to use: don't use it for other things.",
-            "input_schema": {"type": "object"},
-            "defer_loading": True,
-        }
+        m_good = _base_manifest()
         self.assertEqual(lint_manifest(m_good), [])
 
-        # Bad name: no dots
-        m_bad_name = m_good | {"name": "tool"}
-        errors = lint_manifest(m_bad_name)
-        self.assertTrue(any(e["code"] == "M1" for e in errors))
+        m_bad_name = _base_manifest(name="tool")
+        self.assertTrue(any(e["code"] == "M1" for e in lint_manifest(m_bad_name)))
 
-        # Bad name: too long
-        m_long_name = m_good | {"name": "svc." + "a" * 65}
-        errors = lint_manifest(m_long_name)
-        self.assertTrue(any(e["code"] == "M1" for e in errors))
+        m_long_name = _base_manifest(name="svc." + "a" * 65)
+        self.assertTrue(any(e["code"] == "M1" for e in lint_manifest(m_long_name)))
 
-        # Bad desc: too short
-        m_bad_desc = m_good | {"description": "Too short."}
-        errors = lint_manifest(m_bad_desc)
-        self.assertTrue(any(e["code"] == "M2" for e in errors))
+        m_bad_desc = _base_manifest(description="Too short.")
+        self.assertTrue(any(e["code"] == "M2" for e in lint_manifest(m_bad_desc)))
 
-        # Bad desc: missing "when not to use"
-        m_no_guidance = m_good | {"description": "First sentence. Second sentence. Third sentence."}
-        errors = lint_manifest(m_no_guidance)
-        self.assertTrue(any(e["code"] == "M2" for e in errors))
+        m_no_guidance = _base_manifest(
+            description="First sentence. Second sentence. Third sentence."
+        )
+        self.assertTrue(any(e["code"] == "M2" for e in lint_manifest(m_no_guidance)))
 
-        # Missing input_schema
-        m_no_schema = dict(m_good)
+        m_no_schema = _base_manifest()
         del m_no_schema["input_schema"]
-        errors = lint_manifest(m_no_schema)
-        self.assertTrue(any(e["code"] == "M3" for e in errors))
+        self.assertTrue(any(e["code"] == "M3" for e in lint_manifest(m_no_schema)))
 
     def test_ambiguous_tool_requires_examples(self) -> None:
-        # 1. Has alias, no examples -> Fail
-        m_alias: dict[str, Any] = {
-            "name": "svc.tool",
-            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"a": {"type": "string"}},
-                "required": ["a"],
-            },
-            "aliases": ["other.name"],
-        }
+        m_alias = _base_manifest(aliases=["other.name"], input_examples=[])
         errors = lint_manifest(m_alias)
         self.assertTrue(any(e["code"] == "M4" and "ambiguous" in e["msg"] for e in errors))
 
-        # 2. Has optional arg, no examples -> Fail
-        m_optional: dict[str, Any] = {
-            "name": "svc.tool",
-            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-            "input_schema": {
+        m_optional = _base_manifest(
+            input_schema={
                 "type": "object",
                 "properties": {"a": {"type": "string"}},
                 "required": [],
             },
-        }
+            input_examples=[],
+        )
         errors = lint_manifest(m_optional)
         self.assertTrue(any(e["code"] == "M4" and "ambiguous" in e["msg"] for e in errors))
 
-        # 3. Has optional arg, HAS examples -> Pass
-        m_optional_ok: dict[str, Any] = m_optional | {"input_examples": [{"a": "val"}]}
+        m_optional_ok = _base_manifest(
+            input_schema={
+                "type": "object",
+                "properties": {"a": {"type": "string"}},
+                "required": [],
+            },
+            input_examples=[{"a": "val"}, {"a": "alt"}, {"a": "ok"}],
+        )
         self.assertEqual(lint_manifest(m_optional_ok), [])
 
     def test_catalog_validation(self) -> None:
@@ -85,102 +89,78 @@ class TestToolSearchLint(unittest.TestCase):
             d = Path(tmp)
 
             def write_tool(name: str, hot: bool, content: dict[str, Any] | None = None) -> None:
-                m = content or {
-                    "name": f"svc.{name}",
-                    "description": "Sentence one. Sentence two. When NOT to use: none. Extra padding to reach 30 chars.",
-                    "input_schema": {},
-                    "defer_loading": not hot,
-                }
-                (d / f"{name}.json").write_text(json.dumps(m))
+                m = content or _base_manifest(
+                    name=f"svc.{name}",
+                    defer_loading=not hot,
+                    input_examples=[{"a": "x1"}, {"a": "x2"}, {"a": "x3"}],
+                )
+                (d / f"{name}.json").write_text(json.dumps(m), encoding="utf-8")
 
-            # Case 1: All deferred (should fail C1 and C2)
             write_tool("t1", hot=False)
             catalog = load_catalog(d)
             errors = lint_catalog(catalog)
             self.assertTrue(any(e["code"] == "C1" for e in errors))
             self.assertTrue(any(e["code"] == "C2" for e in errors))
 
-            # Case 2: 3 hot tools (should pass)
             for f in d.glob("*.json"):
                 f.unlink()
             write_tool("t1", hot=True)
             write_tool("t2", hot=True)
             write_tool("t3", hot=True)
             write_tool("t4", hot=False)
-            catalog = load_catalog(d)
-            self.assertEqual(lint_catalog(catalog), [])
+            self.assertEqual(lint_catalog(load_catalog(d)), [])
 
-            # Case 3: 6 hot tools (should fail C2)
             for i in range(4, 7):
                 write_tool(f"t{i}", hot=True)
-            catalog = load_catalog(d)
-            errors = lint_catalog(catalog)
+            errors = lint_catalog(load_catalog(d))
             self.assertTrue(any(e["code"] == "C2" for e in errors))
 
     def test_strict_validation(self) -> None:
-        # Unknown key
-        m_unknown = cast(
-            "dict[str, Any]",
-            {
-                "name": "svc.tool",
-                "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-                "input_schema": {},
-                "unknown_field": 123,
-            },
-        )
+        m_unknown = _base_manifest(unknown_field=123)
         errors = lint_manifest(m_unknown)
         self.assertTrue(any(e["code"] == "schema" and "unknown_field" in e["msg"] for e in errors))
 
-        # Bad example vs schema
-        m_bad_example = {
-            "name": "svc.tool",
-            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-            "input_schema": {"type": "object", "properties": {"a": {"type": "string"}}},
-            "input_examples": [{"b": 1}],
-        }
+        m_bad_example = _base_manifest(input_examples=[{"b": 1}, {"a": "ok"}, {"a": "ok2"}])
         errors = lint_manifest(m_bad_example)
         self.assertTrue(any(e["code"] == "example_invalid" for e in errors))
+
+        m_bad_allowed = _base_manifest(allowed_callers=["direct", "code_exec"])
+        self.assertTrue(any(e["code"] == "M8" for e in lint_manifest(m_bad_allowed)))
 
     def test_strict_loader(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             (d / "t1.json").write_text(
-                '{"name": "svc.t1", "description": "...", "input_schema": {}}'
+                json.dumps(_base_manifest(name="svc.t1")),
+                encoding="utf-8",
             )
             (d / "t2.json").write_text(
-                '{"name": "svc.t1", "description": "...", "input_schema": {}}'
+                json.dumps(_base_manifest(name="svc.t1")),
+                encoding="utf-8",
             )
 
-            # Duplicate name should raise HydrationError in strict mode
             from pirml.toolsearch.loader import HydrationError
 
             with self.assertRaises(HydrationError) as cm:
                 load_catalog(d, strict=True)
             self.assertEqual(cm.exception.type, "duplicate_name")
 
-            # Malformed JSON
-            (d / "t2.json").write_text("{malformed")
+            (d / "t2.json").write_text("{malformed", encoding="utf-8")
             with self.assertRaises(HydrationError) as cm:
                 load_catalog(d, strict=True)
             self.assertEqual(cm.exception.type, "load_failed")
 
     def test_schema_and_lint_name_rule_match(self) -> None:
-        schema = json.loads(Path("pirml/contracts/tool_manifest.schema.json").read_text())
+        schema = json.loads(
+            Path("pirml/contracts/tool_manifest.schema.json").read_text(encoding="utf-8")
+        )
         pattern = schema["properties"]["name"]["pattern"]
 
         self.assertIsNotNone(re.match(pattern, "svc.tool"))
         self.assertIsNone(re.match(pattern, "tool"))
 
-        good: dict[str, Any] = {
-            "name": "svc.tool",
-            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-            "input_schema": {},
-        }
-        bad: dict[str, Any] = {
-            "name": "tool",
-            "description": "Sentence one. Sentence two. When NOT to use: none. Long enough.",
-            "input_schema": {},
-        }
+        good = _base_manifest(name="svc.tool")
+        bad = _base_manifest(name="tool")
         self.assertFalse(any(e["code"] == "M1" for e in lint_manifest(good)))
         self.assertTrue(any(e["code"] == "M1" for e in lint_manifest(bad)))
 

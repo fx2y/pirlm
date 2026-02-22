@@ -20,6 +20,7 @@ from pirml.compiler.types import (
 from pirml.compiler.verify import verify_compile_output
 from pirml.contracts.schemas import ToolManifest
 from pirml.toolsearch.loader import load_catalog, load_selected
+from pirml.toolsearch.policy import require_caller_allowed
 from pirml.toolsearch.render import render_selected_tools
 from pirml.toolsearch.search import search_tools
 
@@ -56,6 +57,7 @@ def assemble_tools_topk(
                     f"Tool '{name}' is ambiguous (has aliases or optional args) but lacks input_examples. "
                     "Examples are required for ambiguous tools to ensure compiler precision."
                 )
+        require_caller_allowed(tool, caller="code_exec", tool_name=str(name))
 
     # 3. Render for prompt
     return render_selected_tools(selected_tools)

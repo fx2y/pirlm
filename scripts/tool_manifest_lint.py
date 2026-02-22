@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
-from pirml.runtime.lint import lint_catalog
-from pirml.runtime.load import load_catalog
+from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
+from pirml.runtime.lint import LintFailure, lint_tools_dir
 
 
 def main() -> int:
@@ -16,30 +17,29 @@ def main() -> int:
     """
     parser = argparse.ArgumentParser()
     parser.add_argument("--tools-dir", default="tools")
-    args = parser.parse_args()
+    try:
+        args = strict_parse_args(parser)
+    except CliFailure as err:
+        return emit_failure(err)
 
     tools_dir = Path(args.tools_dir)
-    if not tools_dir.exists():
-        # Directory might not exist yet in early stages; if so, nothing to lint but technically not a 'pass' if we expected tools
-        print(f"Error: tools directory not found: {tools_dir}", file=sys.stderr)
-        return 2
 
     try:
-        catalog = load_catalog(tools_dir, strict=True)
-        if not catalog:
-            # Empty catalog is a failure in this context
-            print(f"Error: no manifests found in {tools_dir}", file=sys.stderr)
-            return 1
-
-        errors = lint_catalog(catalog)
-    except Exception as exc:
-        print(f"Integrity failure: {exc}", file=sys.stderr)
-        return 2
+        catalog, errors = lint_tools_dir(tools_dir)
+    except LintFailure as err:
+        return emit_failure(CliFailure(err.err_type, err.msg, err.code, err.retryable))
 
     if errors:
-        print(f"Manifest lint failed for {tools_dir}:", file=sys.stderr)
-        for err in errors:
-            print(f"  [{err['code']}] {err['path']}: {err['msg']}", file=sys.stderr)
+        print(
+            json.dumps(
+                {
+                    "type": "validation",
+                    "msg": f"manifest lint failed: {len(errors)} error(s) in {tools_dir}",
+                    "retryable": False,
+                }
+            ),
+            file=sys.stderr,
+        )
         return 1
 
     print(f"Verified {len(catalog)} manifests in {tools_dir}")

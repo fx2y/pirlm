@@ -10,8 +10,16 @@
     }
   },
   "input_examples": [
-    {"path": "README.md", "max_bytes": 1024}
+    {"path": "README.md", "max_bytes": 1024},
+    {"path": "pyproject.toml", "max_bytes": 512},
+    {"path": "docs/INSTALL.md", "max_bytes": 2048}
   ],
+  "idempotent": true,
+  "cacheable": true,
+  "max_payload_bytes": 16384,
+  "timeout_s": 8,
+  "retry": {"max_attempts": 1},
+  "allowed_callers": ["code_exec"],
   "tags": ["fs", "io"],
   "defer_loading": false
 }

@@ -94,6 +94,12 @@ class ToolManifest(TypedDict, total=False):
     description: str
     input_schema: dict[str, Any]
     input_examples: list[dict[str, Any]]
+    idempotent: bool
+    cacheable: bool
+    max_payload_bytes: int
+    timeout_s: float
+    retry: dict[str, Any]
+    allowed_callers: list[str]
     tags: list[str]
     defer_loading: bool
     aliases: list[str]

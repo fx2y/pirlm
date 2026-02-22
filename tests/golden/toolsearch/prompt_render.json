@@ -4,6 +4,12 @@
     "input_examples": [
       {
         "path": "/etc/passwd"
+      },
+      {
+        "path": "/etc/hosts"
+      },
+      {
+        "path": "/tmp/example.txt"
       }
     ],
     "input_schema": {
@@ -25,6 +31,12 @@
     "input_examples": [
       {
         "msg": "hello"
+      },
+      {
+        "msg": "world"
+      },
+      {
+        "msg": "ping"
       }
     ],
     "input_schema": {

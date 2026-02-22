@@ -23,6 +23,41 @@
         "type": "object"
       }
     },
+    "idempotent": {
+      "type": "boolean"
+    },
+    "cacheable": {
+      "type": "boolean"
+    },
+    "max_payload_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timeout_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "retry": {
+      "type": "object",
+      "required": ["max_attempts"],
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "allowed_callers": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["direct", "code_exec"]
+      }
+    },
     "tags": {
       "type": "array",
       "items": {

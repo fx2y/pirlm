@@ -9,8 +9,16 @@
     }
   },
   "input_examples": [
-    {"command": "ls -la"}
+    {"command": "ls -la"},
+    {"command": "pwd"},
+    {"command": "echo ready"}
   ],
+  "idempotent": false,
+  "cacheable": false,
+  "max_payload_bytes": 32768,
+  "timeout_s": 10,
+  "retry": {"max_attempts": 0},
+  "allowed_callers": ["code_exec"],
   "tags": ["system", "exec"],
   "defer_loading": false
 }

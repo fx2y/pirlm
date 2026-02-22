@@ -9,8 +9,16 @@
     "required": ["path"]
   },
   "input_examples": [
-    {"path": "/home"}
+    {"path": "/home"},
+    {"path": "/tmp"},
+    {"path": "."}
   ],
+  "idempotent": true,
+  "cacheable": true,
+  "max_payload_bytes": 8192,
+  "timeout_s": 6,
+  "retry": {"max_attempts": 1},
+  "allowed_callers": ["code_exec"],
   "tags": ["fs", "exploration"],
   "defer_loading": true
 }

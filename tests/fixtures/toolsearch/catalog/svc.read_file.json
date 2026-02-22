@@ -9,8 +9,16 @@
     "required": ["path"]
   },
   "input_examples": [
-    {"path": "/etc/passwd"}
+    {"path": "/etc/passwd"},
+    {"path": "/etc/hosts"},
+    {"path": "/tmp/example.txt"}
   ],
+  "idempotent": true,
+  "cacheable": true,
+  "max_payload_bytes": 8192,
+  "timeout_s": 6,
+  "retry": {"max_attempts": 1},
+  "allowed_callers": ["code_exec"],
   "tags": ["fs", "io"],
   "defer_loading": false
 }
