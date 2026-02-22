@@ -64,6 +64,11 @@ def validate_eval_pointer_refs(rows: list[dict[str, Any]], *, art_root: str | Pa
                 if not raw_path:
                     continue
                 path = Path(raw_path)
+                if not path.is_absolute():
+                    source_path_str = row.get("_source_path")
+                    if source_path_str:
+                        path = Path(source_path_str).parent / path
+
                 if not path.exists():
                     raise CliFailure(
                         "unsupported", f"missing ref {path_key}: {path}", 1, retryable=False

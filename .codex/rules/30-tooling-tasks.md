@@ -14,7 +14,7 @@ paths:
 - `G1` Gate order immutable fail-fast: `fmt>lint>types>unit>proto>trace>schemas>replay`.
 - `G2` `fast` stays `<3s`, high-yield, reject-only; never mini-CI.
 - `G3` Script entry style is module-only: `python -m scripts.*`.
-- `G4` Tool/runtime/version pins are policy (determinism+supply-chain), not convenience.
+- `G4` Tool/runtime/version pins are policy (determinism + supply-chain), not convenience.
 - `G5` Dependency admission bar: measurable correctness/determinism/perf gain must exceed maintenance/risk cost.
 - `G6` Gate/task edits must prove value in same merge via `mise run fast` + `mise run ci`; include replay/schema proof when boundary semantics change.
 - `G7` Artifact-first gating: consume explicit artifacts (`out/<run>/...`), never hidden process state.
@@ -22,12 +22,16 @@ paths:
 - `G9` Pointer parity law: emitted pointers (`trace_ptr`, artifact/view refs, projection refs) must resolve and pass schema/frame checks.
 - `G10` Eval harness law: every declared row executes or emits typed unsupported row; no silent skip/fallback.
 - `G11` Canonical-byte law: CI authority uses canonical compact bytes only; human summaries are non-authoritative.
-- `G12` Exit-code law across wrappers/runners: `0` success, `1` business/validation/tool, `2` integrity/config/internal.
-- `G13` Failure envelope law: wrappers/toolpack/headless emit typed JSON error envelopes (`type,msg,retryable`) on fail lanes.
-- `G14` Execution-owner law: extensions/toolpack wrap the single owner path; never spawn alternate runtime paths.
-- `G15` Runtime tool-surface freeze law: UX/toolpack/extension growth is external only; runtime registry remains `{echo,readfile,bash}`.
-- `G16` Status truth law: current-cycle `spec-0/*-tasks.jsonl` is authority; shards/tutorials/learnings cannot override state.
+- `G12` Exit-code law across wrappers/runners: `0` success, `1` business/unsupported/tool/validation, `2` integrity/config/internal.
+- `G13` Failure-envelope law: wrappers/toolpack/headless emit typed JSON stderr envelopes (`type,msg,retryable`) on fail lanes.
+- `G14` Execution-owner law: UX wrappers/extensions/toolpack delegate to one owner path; never spawn alternate runtime paths.
+- `G15` Runtime tool-surface freeze law: UX/toolpack/extension growth stays external; runtime registry remains `{echo,readfile,bash}`.
+- `G16` Status truth law: current-cycle `spec-0/*-tasks.jsonl` is authority; shards/tutorial/learnings cannot override state.
 - `G17` Handoff sync law: behavior deltas co-update `spec-0/00-learnings.jsonl`, current `spec-0/*-tasks.jsonl`, current `spec-0/*-tutorial.jsonl` in same merge.
-- `G18` Done law: status flips to `done` only when live locus exists, named tests exist, and proof commands rerun clean.
-- `G19` Bootstrap law: setup commands (e.g., `mise run boot`) must be idempotent on pre-provisioned workspaces.
-- `G20` Release-ready minimum proof set: `mise run fast`, `mise run ci`, replay check, schema checks, and relevant parity/smoke scripts.
+- `G18` Done law: status flips to `done` only when live locus exists, named tests exist, contradictions resolved (`owner+enforce` bound), matrix refs resolve, and proof cmds rerun clean.
+- `G19` Verification-matrix law: owner/test refs must resolve in-repo (real or declared placeholder suites); unresolved refs block done claims.
+- `G20` Helper-task law: helper lanes (`eval-*`, reports, smokes) are additive only; `tasks.ci.run` and `tasks.fast.run` byte contracts cannot drift silently.
+- `G21` Smoke-label law: in-repo fixture helpers must be labeled smoke; non-fixture benchmarks require explicit dataset override in commands/docs.
+- `G22` Report-input law: report commands consume suite-scoped shard logs (`out-dir/runs/<suite>/*.ndjson`) via explicit args; flat/implicit patterns are invalid.
+- `G23` Bootstrap law: setup commands (e.g., `mise run boot`) must be idempotent on pre-provisioned workspaces.
+- `G24` Release-ready minimum proof set: `mise run fast`, `mise run ci`, replay check, schema checks, and relevant cycle parity/smoke scripts.

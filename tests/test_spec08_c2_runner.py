@@ -50,7 +50,7 @@ class Spec08C2RunnerTests(unittest.TestCase):
             for row in first:
                 if row.get("terminal") is True:
                     trace_ptr = str(row["pi_ptr"]["trace_ptr"])
-                    self.assertTrue(Path(trace_ptr).is_file(), trace_ptr)
+                    self.assertTrue((output.parent / trace_ptr).is_file(), trace_ptr)
                     self.assertNotEqual(trace_ptr, str(output))
 
     def test_append_only_resume(self) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any, cast
@@ -171,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                             pareto_aid,
                         }
                     ),
-                    report_ptr=str(out_path),
+                    report_ptr=os.path.relpath(out_path, Path(row.get("_source_path", ".")).parent),
                     fail_tag=str(raw_ptr_map.get("fail_tag", row.get("fail_tag", ""))),
                 )
                 pointer_index.append(

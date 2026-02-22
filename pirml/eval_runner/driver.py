@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -331,7 +332,7 @@ def run_suite_shard(
             row=row,
             suite=suite_cfg.suite,
             task_id=task.task_id,
-            trace_path_str=str(trace_path),
+            trace_path_str=os.path.relpath(trace_path, out_path.parent),
             shard=runner_cfg.shard,
         )
 
@@ -363,7 +364,7 @@ def run_suite_shard(
                 row=row,
                 suite=suite_cfg.suite,
                 task_id=task.task_id,
-                trace_path_str=str(trace_path),
+                trace_path_str=os.path.relpath(trace_path, out_path.parent),
                 shard=runner_cfg.shard,
             )
 
@@ -394,7 +395,9 @@ def merge_rows(paths: list[Path]) -> list[dict[str, Any]]:
                 raise CliFailure(
                     "integrity", f"corrupt shard input {path}:{line_no}: row must be object", 2
                 )
-            rows.append(cast(dict[str, Any], payload))
+            row = cast(dict[str, Any], payload)
+            row["_source_path"] = str(path)
+            rows.append(row)
 
     rows.sort(
         key=lambda row: (
