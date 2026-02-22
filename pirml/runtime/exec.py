@@ -123,6 +123,11 @@ def _attach_hashes(frame: Mapping[str, Any], *, sanitize_call_args: bool) -> JSO
             updated["sha256_output"] = _sha256_val(updated.get("error"))
     elif op == "final":
         updated["sha256_output"] = _sha256_val(updated.get("result"))
+    elif op == "custom":
+        data = updated.get("data")
+        updated["sha256_data"] = _sha256_val(data)
+        if sanitize_call_args:
+            updated["data"] = _sanitize_args(data)
     return updated
 
 

@@ -393,3 +393,7 @@ def validate_strict_trace(
             h = frame.get("sha256_output")
             if not isinstance(h, str) or _SHA256_RE.fullmatch(h) is None:
                 raise ProtocolError(f"line {idx}: sha256_output must be lowercase sha256 hex")
+        elif op == "custom":
+            h = frame.get("sha256_data")
+            if not isinstance(h, str) or _SHA256_RE.fullmatch(h) is None:
+                raise ProtocolError(f"line {idx}: sha256_data must be lowercase sha256 hex")

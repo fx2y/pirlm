@@ -10,26 +10,27 @@ paths:
 ---
 # Runtime + Protocol Rules (Normative)
 
-- `R0` Plane split is absolute: `L0` runtime/replay contracts frozen; `L1` compiler/web/search additive only.
-- `R1` Channel split strict: stdout carries NDJSON protocol only; stderr/artifacts carry diagnostics only.
-- `R2` Algebra closed: `op in {call,result,final,custom}` only; unknown op/order/cardinality => integrity failure.
-- `R3` Terminal law: exactly one `final`, emitted last; every `result.id` must reference earlier `call.id`.
-- `R4` Envelope law: `id=^c[0-9]{5}$` monotonic unique per run; `seq` starts `1` and increments `+1`; field order deterministic.
-- `R5` Byte-hash law: hash emitted/stored bytes only (post-serialize, post-truncate, post-normalize); never hash pre-transform text surrogates.
-- `R6` Truncation law: boundary cap at writer (default `8192`); only `result` may truncate and must emit `truncated:true,truncated_bytes>=0`.
-- `R7` Redaction law: trace args redact sensitive keys (`token|password|secret|api[_]?key|authorization|auth*`) to deterministic `{redacted_sha256}`.
-- `R8` Artifact law: every run (incl fatal) emits `trace.ndjson` + compact `final.json`; declared pointers (e.g. trace_ptr) must resolve.
-- `R9` Replay law: strict trace validation (`op/order/id/envelope/hash`) before run; replay sets `PIRML_BLOCK_TOOLS=1`; ID drift or final-hash drift hard-fails.
-- `R10` Final boundary law: `final.json` shape stays `{ok,results,output?,meta?}` only; raw transcripts/html/debug never cross boundary.
-- `R11` Selection law: same `(query,catalog,mode,k)` => same ordered refs via explicit total-order key; duplicate/invalid/empty usable sets typed-fail.
-- `R12` Eval matrix law: run every declared plan; unsupported plan/config emits typed error row; silent skip is prohibited.
-- `R13` Config law: parser is strict+exhaustive; unknown variant/loser plan/reintroduced fallback => typed fail (never implicit downgrade).
-- `R14` Parallel law: independent fanout uses bounded `asyncio.gather`; merge order must equal deterministic source order.
-- `R15` State law: per-run mutable state must be run-scoped; cross-run globals for ranking/cache/boilerplate are defects.
-- `R16` Cache law: store canonical bytes; persisted sha/byte-count/rows must match stored bytes; read path normalizes before compare/use.
-- `R17` Error law: broad swallow (`except Exception: continue`) forbidden on boundary paths; convert to typed error + trace evidence.
-- `R18` Compiler branch law: exactly one branch: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `R19` Extractor+contract law: strict sentinels (`PROG`,`CONTRACT`), strict schema (required/additional/type), alias normalize before verify/hash/write.
-- `R20` AST/tool law: fail-closed import/call structure; one async `main`; one `send_final`; every `TOOL_*` awaited; tool-set exact to contract deps.
-- `R21` Smoke+schema law: deterministic smoke budgets required; schema stage validates explicit artifact args only (no implicit workspace scan).
-- `R22` Semantic-change law: any op/tool/replay/compile/search/gate change requires same-merge invariant delta + tests + lint/schema + docs + tasks/learnings.
+- `R0` Plane split absolute: `L0` runtime/replay contracts frozen; `L1` capabilities additive only.
+- `R1` Channel split absolute: stdout emits NDJSON protocol only; diagnostics go stderr/artifacts only.
+- `R2` Algebra closed: `op in {call,result,final,custom}`; unknown op/order/cardinality => integrity failure.
+- `R3` Final law: exactly one `final`, last; every `result.id` must reference a prior `call.id`.
+- `R4` Envelope law: `id=^c[0-9]{5}$` monotonic unique/run; `seq` starts `1`, strict `+1`; key order deterministic.
+- `R5` Byte law: hash post-transform bytes only (serialize/normalize/truncate complete); never hash surrogate/pre-state text.
+- `R6` Truncation law: writer owns cap (`8192` default); only `result` may truncate; emit `truncated=true,truncated_bytes>=0`; rehash post-truncate.
+- `R7` Redaction law: sensitive arg keys (`token|password|secret|api[_]?key|authorization|auth*`) become deterministic `{redacted_sha256}`.
+- `R8` Artifact law: every run, including fatal, emits `trace.ndjson` + `final.json`; every emitted pointer path must resolve.
+- `R9` Boundary law: `final.json` root is exactly `{ok,results,output?,meta?}`; bulky/raw/debug data remains in artifacts.
+- `R10` Replay law: validate trace (`op/order/id/envelope/hash`) before replay; force `PIRML_BLOCK_TOOLS=1`; ID/hash drift hard-fails.
+- `R11` Tool law: runtime tool surface is exact `{echo,readfile,bash}`; helper APIs (`get/put/llm_query/amap`) are internal, not tool growth.
+- `R12` Compiler branch law: exactly one branch/run: `{prog.py+contract.json}` xor `{compile_error.json}`.
+- `R13` Contract extraction law: strict sentinels/schema; alias-normalize before verify/hash/write.
+- `R14` AST/tool law: fail-closed structure checks (one async `main`, one `send_final`, awaited `TOOL_*`, exact deps).
+- `R15` Selection law: same inputs => same ordered refs via explicit total-order key; duplicates/invalid/empty usable sets typed-fail.
+- `R16` Eval law: execute every declared plan; unsupported rows are typed outputs; silent skip/fallback is prohibited.
+- `R17` Winner law: scoring is deterministic + hashseed-invariant; `hash()` is banned on eval paths.
+- `R18` Config law: strict exhaustive parse; unknown variant/provider/plan/cache or loser-lock breach => typed fail.
+- `R19` Parallel law: independent fanout uses bounded `gather`; merged output order equals deterministic source order.
+- `R20` State/cache law: mutable state run-scoped only; cache identity uses canonical stored bytes; persisted sha/bytes must match filesystem bytes.
+- `R21` Governor law: recursion has hard budgets (iters/subcalls/timeout); warn and fail thresholds are typed, never silent.
+- `R22` Pointer law: lineage spillover uses `op=custom`; default-off unless opted in; `custom` rows must never contaminate context packing.
+- `R23` Semantic-change law: behavior deltas touching op/tool/replay/compile/search/schema/gates require same-change invariant delta + tests + docs/tasks/learnings/tutorial sync.

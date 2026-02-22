@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import tempfile
 from collections.abc import Iterator
 from typing import Any
 
@@ -156,18 +159,14 @@ class ArtifactStore:
     ) -> str:
         """G09: Streaming version of put_view for memory efficiency (10MB+)."""
         path = self._layout.views_dir / f"{vid}.ndjson"
-        import hashlib
-        import os
-        import tempfile
-
         self._layout.views_dir.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(self._layout.views_dir))
 
         total_chars = 0
         total_lines = 0
         total_bytes = 0
         hasher = hashlib.sha256()
 
+        fd, tmp = tempfile.mkstemp(dir=str(self._layout.views_dir))
         try:
             with os.fdopen(fd, "wb") as f:
                 for row in rows:
@@ -262,7 +261,7 @@ class ArtifactStore:
                 if line.strip():
                     try:
                         row = json.loads(line)
-                        texts.append(row.get("text", ""))
+                        texts.append(str(row.get("text", "")))
                     except json.JSONDecodeError as exc:
                         raise ArtifactPathError(
                             error_type=ArtifactErrorType.INTEGRITY,
@@ -310,9 +309,7 @@ class ArtifactStore:
                         "id": frame["vid"],
                         "kind": "slice",
                         "mime": "application/x-ndjson",
-                        "bytes": len(
-                            frame.get("sha256", "")
-                        ),  # bytes not in view frame, but path exists
+                        "bytes": 0,
                         "sha256": frame["sha256"],
                         "path": frame["path"],
                         "parents": [frame["aid"]],

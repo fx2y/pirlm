@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import shutil
 import tempfile
 import unittest
@@ -117,6 +119,37 @@ class TestRlmKernel(unittest.IsolatedAsyncioTestCase):
         await kernel.run("run 2")
         self.assertEqual(len(kernel.history), 1)  # Should NOT be 2
         self.assertEqual(kernel.subcall_count, 1)  # Should NOT be 2
+
+    async def test_warn_threshold_emits_stderr(self) -> None:
+        """I08: Subcall budget guard warn>20"""
+        code = 'for _ in range(25): await llm_query("ping")\nFinal = "done"'
+        model = StubModelAdapter(code)
+        kernel = RlmKernel(self.store, model)
+
+        f = io.StringIO()
+        with contextlib.redirect_stderr(f):
+            await kernel.run("test")
+
+        output = f.getvalue()
+        self.assertIn("Warning: subcall count 21 exceeds soft limit 20", output)
+        self.assertIn("Warning: subcall count 25 exceeds soft limit 20", output)
+
+    async def test_large_stdout_not_in_history(self) -> None:
+        """I07: History meta-only (no stdout bloat)"""
+        # Create a huge stdout string
+        huge = "A" * 10000
+        code = f'print("{huge}"); Final = "done"'
+        model = StubModelAdapter(code)
+        kernel = RlmKernel(self.store, model)
+
+        await kernel.run("test")
+
+        frame = list(kernel.history)[0]
+        # Prefix should be capped at 100 chars
+        self.assertEqual(len(frame["prefix"]), 100)
+        self.assertEqual(frame["len"], 10001)  # +1 for newline
+        # The full string should NOT be in the frame
+        self.assertNotIn(huge, frame["prefix"])
 
     async def test_rlm_determinism_clock(self) -> None:
         # 06.G06: SequenceClock used for timestamps

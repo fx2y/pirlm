@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import os
+import sys
+import time
+import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, cast
@@ -13,10 +17,13 @@ from pirml.artifacts.view_dsl import SliceSpec
 from pirml.artifacts.view_materialize import ViewMaterializer
 from pirml.clock import SequenceClock
 from pirml.compiler.model import ModelAdapter
+from pirml.runtime.rpc import send_custom
 from pirml.web.etl import chunk_views, pack_batches
 
 from .errors import RlmKernelError
+from .governor import build_rlm_prompt, create_citation_map
 from .history import RlmHistory
+from .project import project_web_output
 from .types import RlmBudget, RlmErrorType
 
 
@@ -66,8 +73,6 @@ class RlmKernel:
         self.clock = clock or SequenceClock.from_env()
         # C6.T00: Opt-in via flag or env
         if emit_pi_pointers is None:
-            import os
-
             emit_pi_pointers = os.getenv("PIRML_EMIT_PI_POINTERS") == "1"
         self.emit_pi_pointers = emit_pi_pointers
         self.history = RlmHistory()
@@ -76,8 +81,6 @@ class RlmKernel:
         self.parallel_sem = asyncio.Semaphore(self.budget["max_parallel"])
 
     async def run(self, prompt: str) -> Any:
-        import time
-
         self.history = RlmHistory()
         self.subcall_count = 0
         start_time = time.monotonic()
@@ -103,8 +106,6 @@ class RlmKernel:
                 )
 
             # 1. Root LM generates code
-            from .governor import build_rlm_prompt
-
             full_prompt = build_rlm_prompt(state, self.history, self.emit_pi_pointers)
             code = await asyncio.to_thread(self.model.compile_once, full_prompt)
 
@@ -123,20 +124,14 @@ class RlmKernel:
             # 4. Stop condition C3.T04
             if state.Final is not None:
                 # C5.T05/T06: Project final and pack citations
-                from .governor import create_citation_map
-
                 ts_now = self.clock.now()
                 citations = create_citation_map([], str(state.Final), ts=ts_now)
 
                 # C5.T07, I10: Emit web_output.json
-                from .project import project_web_output
-
                 out_path = project_web_output(self, str(state.Final), citations)
 
                 # C6.T01: Emit pi CustomEntry pointer row
                 if self.emit_pi_pointers and out_path:
-                    from pirml.runtime.rpc import send_custom
-
                     # Collect roots from DOCS/CHUNKS/SUMS
                     roots = list(set(state.DOCS + state.CHUNKS + state.SUMS))
                     send_custom(
@@ -184,8 +179,6 @@ class RlmKernel:
             except RlmKernelError:
                 raise
             except Exception as e:
-                import traceback
-
                 traceback.print_exc()
                 print(f"Error: {e}")
         return stdout.getvalue()
@@ -200,16 +193,14 @@ class RlmKernel:
             if spec:
                 vid = self.view_vm.materialize(clean_id, spec)
                 return self.store.get_view_text(vid)
-            else:
-                kind = self.store.index.get_kind(clean_id)
-                if kind == "slice":
-                    return self.store.get_view_text(clean_id)
-                elif kind:
-                    return self.store.get_bytes(clean_id).decode("utf-8", errors="replace")
-                else:
-                    raise RlmKernelError(
-                        error_type=RlmErrorType.INVALID_ARGS, msg=f"Not found: {aid_vid}"
-                    )
+
+            kind = self.store.index.get_kind(clean_id)
+            if kind == "slice":
+                return self.store.get_view_text(clean_id)
+            if kind:
+                return self.store.get_bytes(clean_id).decode("utf-8", errors="replace")
+
+            raise RlmKernelError(error_type=RlmErrorType.INVALID_ARGS, msg=f"Not found: {aid_vid}")
         except ArtifactPathError as e:
             raise RlmKernelError(error_type=RlmErrorType.INVALID_ARGS, msg=str(e)) from e
         except Exception as e:
@@ -236,8 +227,6 @@ class RlmKernel:
         # C3.T06: Budget guards
         self.subcall_count += 1
         if self.subcall_count > 20:
-            import sys
-
             print(
                 f"Warning: subcall count {self.subcall_count} exceeds soft limit 20",
                 file=sys.stderr,

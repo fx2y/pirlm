@@ -47,14 +47,22 @@ class TestArtifactFS(unittest.TestCase):
 
     def test_partial_temp_not_committed(self) -> None:
         """I02: Partial temp not committed on failure"""
-        import contextlib
+        import unittest.mock as mock
 
         path = self.test_dir / "fail.txt"
-        with contextlib.suppress(Exception):
-            # We can't easily simulate a mid-write failure here without mocking
-            # but we can check that we don't leave temp files around if we can.
-            pass
+
+        # Mock os.fdopen to raise an exception during write
+        with (
+            mock.patch("os.fdopen", side_effect=OSError("Disk full")),
+            self.assertRaises(OSError),
+        ):
+            atomic_write(path, b"partial data")
+
+        # Ensure the final path does not exist
         self.assertFalse(path.exists())
+        # Ensure no temp files are left in the directory
+        temp_files = list(self.test_dir.glob("tmp*"))
+        self.assertEqual(len(temp_files), 0)
 
     def test_lineage_parent_order_stable(self) -> None:
         """I04: Lineage edges resolvable and ordered"""
@@ -66,10 +74,11 @@ class TestArtifactFS(unittest.TestCase):
         self.assertEqual(resolved, [p1, p2])
 
     def test_missing_parent_typed_fail(self) -> None:
-        """I04: Missing parent logic (currently we allow putting with non-existent parents in the index,
-        but get_meta or resolution might fail later if we enforce it)"""
-        # For now, put_raw doesn't check parent existence.
-        pass
+        """I04: Missing parent logic"""
+        # If we resolve parents for an ID that doesn't exist, it returns empty list.
+        # But if we try to get meta for it, it returns None.
+        self.assertIsNone(self.store.get_meta("non_existent"))
+        self.assertEqual(self.store.resolve_parents("non_existent"), [])
 
 
 if __name__ == "__main__":
