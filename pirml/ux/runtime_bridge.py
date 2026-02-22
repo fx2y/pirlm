@@ -73,12 +73,8 @@ def run_once(
         stdout_q: queue.Queue[str] = queue.Queue()
         stderr_q: queue.Queue[str] = queue.Queue()
 
-        t_stdout = threading.Thread(
-            target=_drain, args=(proc.stdout, stdout_q), daemon=True
-        )
-        t_stderr = threading.Thread(
-            target=_drain, args=(proc.stderr, stderr_q), daemon=True
-        )
+        t_stdout = threading.Thread(target=_drain, args=(proc.stdout, stdout_q), daemon=True)
+        t_stderr = threading.Thread(target=_drain, args=(proc.stderr, stderr_q), daemon=True)
 
         t_stdout.start()
         t_stderr.start()

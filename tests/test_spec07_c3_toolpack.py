@@ -76,11 +76,15 @@ class TestSpec07C3Toolpack(unittest.TestCase):
 
     def test_open_path_view(self):
         # C3.T02: Support path inputs by extracting ID
+        from typing import cast
+
+        from pirml.artifacts.view_dsl import SliceSpec
         from pirml.artifacts.view_materialize import ViewMaterializer
-        spec = {"op": "lines", "a": 0, "b": 0}
+
+        spec = cast(SliceSpec, {"op": "lines", "a": 0, "b": 0})
         mat = ViewMaterializer(self.store)
         vid = mat.materialize(self.aid, spec)
-        
+
         path = f"art/views/{vid}.ndjson"
         cmd = [
             sys.executable,

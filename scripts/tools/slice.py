@@ -11,7 +11,9 @@ from pirml.artifacts.view_materialize import ViewMaterializer
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(prog="pirml-slice", description="Create artifact slices for RLM recursion.")
+    parser = argparse.ArgumentParser(
+        prog="pirml-slice", description="Create artifact slices for RLM recursion."
+    )
     parser.add_argument("aid", help="Artifact ID (AID)")
     parser.add_argument("spec", help="Slice specification (JSON string or path to JSON file)")
     parser.add_argument(

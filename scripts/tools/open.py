@@ -14,7 +14,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="pirml-open", description="Open artifacts/views by ID.")
     parser.add_argument("id", help="Artifact ID (AID) or View ID (VID)")
     parser.add_argument(
-        "--mode", choices=["meta", "bytes", "text"], default="bytes", help="Display mode (default: bytes)"
+        "--mode",
+        choices=["meta", "bytes", "text"],
+        default="bytes",
+        help="Display mode (default: bytes)",
     )
     parser.add_argument(
         "--art-root", type=Path, default=Path("art"), help="Artifact root directory (default: art)"
@@ -25,15 +28,12 @@ def main() -> None:
     # C3.T02: Path decode policy: support path inputs by extracting ID
     target_id = args.id
     if "/" in target_id or "\\" in target_id or target_id.endswith(".ndjson"):
+        from contextlib import suppress
+
         from pirml.artifacts.paths import parse_view_artifact_path
-        try:
+
+        with suppress(ArtifactPathError):
             target_id = parse_view_artifact_path(target_id)
-        except ArtifactPathError:
-            # If it's not a view path, maybe it's just a raw path?
-            # But the requirement is to use the ID.
-            # If it's art/obj/..., extract sha?
-            # For now, just try parsing as view path.
-            pass
 
     # C1.T04: Support .pirml projection if default art/ missing
     art_root = args.art_root
