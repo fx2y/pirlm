@@ -31,6 +31,14 @@ class Spec09C1ProductShellTests(unittest.TestCase):
         rows = [line for line in stdout.splitlines() if line.strip()]
         return [json.loads(line) for line in rows]
 
+    @staticmethod
+    def _assert_typed_config_stderr(proc: subprocess.CompletedProcess[str]) -> None:
+        stderr = proc.stderr.strip()
+        assert stderr, proc
+        assert "usage:" not in stderr.lower(), stderr
+        err = json.loads(stderr)
+        assert err["type"] == "config", err
+
     def test_legacy_flags_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out_dir = Path(tmp) / "run"
@@ -206,6 +214,36 @@ class Spec09C1ProductShellTests(unittest.TestCase):
             self.assertEqual(
                 (live / "final.json").read_bytes(), (replay / "final.json").read_bytes()
             )
+
+    def test_replay_parse_invalid_float_typed_no_usage(self) -> None:
+        proc = self._run("replay", "tests/prog_ok.py", "out/ci/trace.ndjson", "--timeout", "nope")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_doctor_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("doctor", "--home")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_install_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("install-pi-ext", "--target")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_uninstall_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("uninstall-pi-ext", "--target")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_legacy_parse_invalid_scalar_typed_no_usage(self) -> None:
+        proc = self._run("--timeout", "nope", "--prog", "tests/prog_ok.py")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_legacy_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("--prog")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
 
     def test_runtime_stdout_contract_preserved(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

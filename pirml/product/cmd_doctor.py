@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from pirml.cli_common import CliFailure
+from pirml.cli_common import strict_parse_args
 
 
 def _check_path(home: Path) -> dict[str, object]:
@@ -56,9 +56,7 @@ def run_doctor_command(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="pirml doctor")
     parser.add_argument("--project-root", default=".", help="Project root")
     parser.add_argument("--home", default=None, help="Override home for deterministic checks")
-    args, unknown = parser.parse_known_args(argv)
-    if unknown:
-        raise CliFailure("config", f"unknown args: {' '.join(unknown)}", 2, retryable=False)
+    args = strict_parse_args(parser, argv)
 
     home = Path(args.home).expanduser() if args.home else Path.home()
     project_root = Path(args.project_root).resolve()

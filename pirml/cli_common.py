@@ -48,14 +48,61 @@ def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, 
     return {"type": err_type, "msg": msg, "retryable": retryable}
 
 
+def _normalize_argparse_message(message: str | None) -> str:
+    if not message:
+        return "invalid arguments"
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return "invalid arguments"
+    for line in reversed(lines):
+        lower = line.lower()
+        if lower.startswith("error:"):
+            return line.split(":", 1)[1].strip()
+        marker = ": error:"
+        if marker in lower:
+            return line.split(marker, 1)[1].strip()
+    return lines[-1]
+
+
+def _patch_argparse_fail_closed(parser: argparse.ArgumentParser) -> None:
+    def _error(message: str) -> None:
+        raise CliFailure("config", _normalize_argparse_message(message), 2, retryable=False)
+
+    def _exit(status: int = 0, message: str | None = None) -> None:
+        if status == 0:
+            raise SystemExit(0)
+        raise CliFailure(
+            "config",
+            _normalize_argparse_message(message),
+            2,
+            retryable=False,
+        )
+
+    parser.error = _error  # type: ignore[assignment]
+    parser.exit = _exit  # type: ignore[assignment]
+    for action in parser._actions:
+        maybe_choices = getattr(action, "choices", None)
+        if not isinstance(maybe_choices, dict):
+            continue
+        for subparser in cast(dict[str, object], maybe_choices).values():
+            if isinstance(subparser, argparse.ArgumentParser):
+                _patch_argparse_fail_closed(subparser)
+
+
 def strict_parse_args(
     parser: argparse.ArgumentParser, argv: list[str] | None = None
 ) -> argparse.Namespace:
+    _patch_argparse_fail_closed(parser)
     parser.exit_on_error = False
     try:
         args, unknown = parser.parse_known_args(argv)
     except argparse.ArgumentError as exc:
-        raise CliFailure("config", str(exc), 2, retryable=False) from exc
+        raise CliFailure(
+            "config",
+            _normalize_argparse_message(str(exc)),
+            2,
+            retryable=False,
+        ) from exc
     if unknown:
         unknown_joined = " ".join(unknown)
         raise CliFailure("config", f"unknown args: {unknown_joined}", 2, retryable=False)

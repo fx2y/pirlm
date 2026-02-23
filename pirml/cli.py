@@ -6,7 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from .cli_common import CliFailure, emit_failure
+from .cli_common import CliFailure, emit_failure, strict_parse_args
 from .clock import SequenceClock
 from .engine import run_live, run_replay
 from .protocol import (
@@ -98,12 +98,15 @@ def _run_legacy(args: argparse.Namespace) -> int:
 
 def _main_legacy(argv: list[str] | None) -> int:
     parser = build_legacy_parser()
-    args = parser.parse_args(argv)
     try:
+        args = strict_parse_args(parser, argv)
         return _run_legacy(args)
-    except (OSError, ProtocolError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
+    except CliFailure as err:
+        return emit_failure(err)
+    except ValueError as exc:
+        return emit_failure(CliFailure("config", str(exc), 2, retryable=False))
+    except (OSError, ProtocolError) as exc:
+        return emit_failure(CliFailure("integrity", str(exc), 2, retryable=False))
 
 
 def _cmd_doctor(argv: list[str]) -> int:
@@ -139,9 +142,7 @@ def _cmd_replay(argv: list[str]) -> int:
         default=30.0,
         help="Process timeout seconds (default: 30.0)",
     )
-    args, unknown = parser.parse_known_args(argv)
-    if unknown:
-        raise CliFailure("config", f"unknown args: {' '.join(unknown)}", 2, retryable=False)
+    args = strict_parse_args(parser, argv)
     cmd = [
         sys.executable,
         "-m",

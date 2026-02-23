@@ -170,6 +170,23 @@ class Spec09C7HardeningSyncTests(unittest.TestCase):
         self.assertEqual(err2["type"], "config")
         self.assertIn("unknown args", str(err2["msg"]))
 
+    def test_parse_fail_lanes_never_emit_usage_text(self) -> None:
+        checks = [
+            ("replay", "tests/prog_ok.py", "out/ci/trace.ndjson", "--timeout", "bad"),
+            ("doctor", "--home"),
+            ("install-pi-ext", "--target"),
+            ("tool", "init"),
+            ("tool", "lint", "--tools-dir"),
+            ("--timeout", "bad", "--prog", "tests/prog_ok.py"),
+        ]
+        for argv in checks:
+            with self.subTest(argv=argv):
+                proc = self._run(*argv)
+                self.assertEqual(proc.returncode, 2)
+                self.assertNotIn("usage:", proc.stderr.lower())
+                err = self._typed_stderr(proc)
+                self.assertEqual(err["type"], "config")
+
 
 if __name__ == "__main__":
     unittest.main()

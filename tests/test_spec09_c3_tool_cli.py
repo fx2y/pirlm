@@ -27,6 +27,14 @@ class Spec09C3ToolCliTests(unittest.TestCase):
         for path in sorted(src.glob("*.json")):
             shutil.copy2(path, dst / path.name)
 
+    @staticmethod
+    def _assert_typed_config_stderr(proc: subprocess.CompletedProcess[str]) -> None:
+        stderr = proc.stderr.strip()
+        assert stderr, proc
+        assert "usage:" not in stderr.lower(), stderr
+        err = json.loads(stderr)
+        assert err["type"] == "config", err
+
     def test_init_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -131,6 +139,21 @@ class Spec09C3ToolCliTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 2)
             err = json.loads(proc.stderr.strip())
             self.assertEqual(err["type"], "config")
+
+    def test_init_parse_missing_required_name_typed_no_usage(self) -> None:
+        proc = self._run("tool", "init")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_lint_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("tool", "lint", "--tools-dir")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
+
+    def test_pack_parse_missing_value_typed_no_usage(self) -> None:
+        proc = self._run("tool", "pack", "--out")
+        self.assertEqual(proc.returncode, 2)
+        self._assert_typed_config_stderr(proc)
 
 
 if __name__ == "__main__":

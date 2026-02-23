@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from pirml.cli_common import CliFailure
+from pirml.cli_common import CliFailure, strict_parse_args
 
 _TARGETS = frozenset({"global", "project"})
 
@@ -61,9 +61,7 @@ def _build_parser(prog: str) -> argparse.ArgumentParser:
 
 def run_install_command(argv: list[str]) -> int:
     parser = _build_parser("pirml install-pi-ext")
-    args, unknown = parser.parse_known_args(argv)
-    if unknown:
-        raise CliFailure("config", f"unknown args: {' '.join(unknown)}", 2, retryable=False)
+    args = strict_parse_args(parser, argv)
     if args.target not in _TARGETS:
         raise CliFailure("config", f"unknown target: {args.target}", 2, retryable=False)
 
@@ -90,9 +88,7 @@ def run_install_command(argv: list[str]) -> int:
 
 def run_uninstall_command(argv: list[str]) -> int:
     parser = _build_parser("pirml uninstall-pi-ext")
-    args, unknown = parser.parse_known_args(argv)
-    if unknown:
-        raise CliFailure("config", f"unknown args: {' '.join(unknown)}", 2, retryable=False)
+    args = strict_parse_args(parser, argv)
     if args.target not in _TARGETS:
         raise CliFailure("config", f"unknown target: {args.target}", 2, retryable=False)
 
