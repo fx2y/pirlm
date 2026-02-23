@@ -23,6 +23,11 @@ class Spec08C3ScoringTests(unittest.TestCase):
         text = Path("pirml/web/eval_shard.py").read_text(encoding="utf-8")
         self.assertNotIn("deterministic_jitter(", text)
 
+    def test_eval_shard_uses_evidence_accuracy_not_exact_match(self) -> None:
+        text = Path("pirml/web/eval_shard.py").read_text(encoding="utf-8")
+        self.assertIn("evidence_accuracy(", text)
+        self.assertNotIn("score_exact_match(", text)
+
 
 if __name__ == "__main__":
     unittest.main()

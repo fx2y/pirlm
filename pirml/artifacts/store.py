@@ -247,6 +247,10 @@ class ArtifactStore:
         """Retrieve artifact ids by kind."""
         return self._index.find_by_kind(kind)
 
+    def list_meta(self, *, kind: str | None = None, limit: int | None = None) -> list[ArtifactMeta]:
+        """Retrieve artifact metadata in deterministic order."""
+        return self._index.list_meta(kind=kind, limit=limit)
+
     def get_view_text(self, vid: str) -> str:
         """Helper to read and concatenate text from an ndjson view."""
         path_str = self._index.get_path(vid)

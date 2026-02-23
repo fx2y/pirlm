@@ -39,6 +39,8 @@ def create_pointer_payload(
 def project_last_run(out_dir: Path, art_root: Path, project_root: Path) -> None:
     # C1.T04: Implement deterministic .pirml projection facade
     pirml_dir = project_root / ".pirml"
+    if pirml_dir.is_symlink() or pirml_dir.is_file():
+        pirml_dir.unlink()
     pirml_dir.mkdir(exist_ok=True)
 
     trace_src = out_dir / "trace.ndjson"

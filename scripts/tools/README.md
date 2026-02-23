@@ -82,6 +82,30 @@ python -m scripts.tools.replay my_prog.py out/run1/trace.ndjson --out-dir out/re
 
 ---
 
+## 4. pirml-search
+
+**Purpose:** Search artifacts by metadata/content without manual NDJSON grep.
+
+**Usage:**
+```bash
+python -m scripts.tools.search [--kind <kind>] [--url <substr>] [--contains <substr>] [--limit <n>] [--json] [--art-root <path>]
+```
+
+**Examples:**
+```bash
+# Find raw artifacts from a specific site
+python -m scripts.tools.search --kind raw --url example.com --json
+
+# Find artifacts whose UTF-8 payload contains a snippet
+python -m scripts.tools.search --contains "deterministic evidence" --limit 10
+```
+
+**Failure Modes:**
+- Exit 1: Invalid filter values or missing artifact root.
+- Exit 2: Integrity/internal failures while scanning artifacts.
+
+---
+
 ## Non-Goals
 - These tools are NOT for live runtime execution (use `python -m pirml`).
 - These tools do NOT edit artifacts (immutable CAS).

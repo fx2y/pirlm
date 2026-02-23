@@ -125,6 +125,21 @@ class TestSpec07C1RuntimeShim(unittest.TestCase):
         self.assertTrue((self.project_root / ".pirml" / "artifacts").is_symlink())
         self.assertTrue((self.project_root / ".pirml" / "artifacts").resolve().exists())
 
+    def test_projection_recovers_from_stale_projection_symlink(self):
+        stale_target = self.tmp_path / "missing_projection_target"
+        (self.project_root / ".pirml").symlink_to(stale_target)
+        res = run_once(
+            self.prog_path,
+            self.out_dir,
+            project_root=self.project_root,
+            art_root=self.art_dir,
+        )
+        self.assertTrue(res["ok"])
+        pirml_dir = self.project_root / ".pirml"
+        self.assertTrue(pirml_dir.is_dir())
+        self.assertTrue((pirml_dir / "trace.ndjson").is_symlink())
+        self.assertTrue((pirml_dir / "final.json").is_symlink())
+
     def test_ux_summary_derivation(self):
         from pirml.ux.layout import POINTER_SUMMARY_MAX_CHARS, derive_summary
 

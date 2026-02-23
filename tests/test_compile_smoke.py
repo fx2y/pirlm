@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
@@ -183,6 +185,31 @@ class TestCompileSmokeManifest(unittest.TestCase):
                 )
             self.assertFalse(res.get("ok"))
             self.assertTrue((out_path / "smoke_trace.ndjson").exists())
+
+    def test_smoke_failure_does_not_emit_debug_banner(self) -> None:
+        case = next(
+            c
+            for c in load_fixture_cases(Path("tests/fixtures/compile/corpus.jsonl"))
+            if c.id == "FX.C3.FAIL.CALL_BUDGET"
+        )
+        with tempfile.TemporaryDirectory() as out_dir:
+            out_path = Path(out_dir)
+            stderr_buffer = StringIO()
+            with (
+                patch(
+                    "pirml.compiler.model.StubModelAdapter.compile_once",
+                    return_value=case.raw_model_text,
+                ),
+                redirect_stderr(stderr_buffer),
+            ):
+                res = compile_task(
+                    task=case.task,
+                    tools_dir=Path("tests/fixtures/toolsearch/catalog"),
+                    out_dir=out_path,
+                    skip_smoke=False,
+                )
+            self.assertFalse(res.get("ok"))
+            self.assertNotIn("--- SMOKE FAILED ---", stderr_buffer.getvalue())
 
 
 if __name__ == "__main__":

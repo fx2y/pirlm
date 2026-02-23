@@ -23,6 +23,12 @@ class TestSpec07C3Toolpack(unittest.TestCase):
 
         self.store = ArtifactStore(layout=default_layout(root=self.art_dir))
         self.aid = self.store.put_raw(b"line 1\nline 2\nline 3\n", kind="test", mime="text/plain")
+        self.web_aid = self.store.put_raw(
+            b"pirml deterministic evidence sample\n",
+            kind="raw",
+            mime="text/plain",
+            src={"url": "https://example.com/docs/page"},
+        )
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -193,6 +199,43 @@ class TestSpec07C3Toolpack(unittest.TestCase):
         self.assertEqual(res.returncode, 1)
         err = json.loads(res.stderr)
         self.assertEqual(err["type"], "artifact")
+
+    def test_search_by_kind_and_url(self):
+        cmd = [
+            sys.executable,
+            "-m",
+            "scripts.tools.search",
+            "--kind",
+            "raw",
+            "--url",
+            "example.com/docs",
+            "--json",
+            "--art-root",
+            str(self.art_dir),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        rows = json.loads(res.stdout)
+        self.assertTrue(rows)
+        ids = {row["id"] for row in rows}
+        self.assertIn(self.web_aid, ids)
+
+    def test_search_by_content(self):
+        cmd = [
+            sys.executable,
+            "-m",
+            "scripts.tools.search",
+            "--contains",
+            "deterministic evidence",
+            "--json",
+            "--art-root",
+            str(self.art_dir),
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        rows = json.loads(res.stdout)
+        ids = {row["id"] for row in rows}
+        self.assertIn(self.web_aid, ids)
 
 
 if __name__ == "__main__":

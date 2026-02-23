@@ -7,6 +7,26 @@ from pirml.web.fetch import CachedDocFetcher, RealDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
 from pirml.web.search import MockProvider
 from pirml.web.trace import WebTracer
+from pirml.web.types import CiteRow
+
+
+def _snippet(text: str, *, limit: int) -> str:
+    clean = " ".join(text.split())
+    if len(clean) <= limit:
+        return clean
+    return clean[: max(0, limit - 3)] + "..."
+
+
+def _print_citation_summary(citations: list[CiteRow]) -> None:
+    if not citations:
+        print("Citations: 0")
+        return
+    print(f"Citations: {len(citations)}")
+    for idx, cite in enumerate(citations, start=1):
+        url = str(cite.get("url", ""))
+        chunk_id = str(cite.get("chunk_id", ""))
+        quote = _snippet(str(cite.get("quote", "")), limit=120)
+        print(f"  {idx}. {url} [{chunk_id}] {quote}")
 
 
 async def smoke():
@@ -43,8 +63,8 @@ async def smoke():
 
     try:
         final = await pipeline.run("ping", plan)
-        print(f"Smoke success: answer={final['answer'][:50]}...")
-        print(f"Citations: {len(final['citations'])}")
+        print(f"Smoke success: answer={_snippet(str(final['answer']), limit=160)}")
+        _print_citation_summary(final["citations"])
     except Exception as e:
         print(f"Smoke failed (as expected if offline): {e}")
 

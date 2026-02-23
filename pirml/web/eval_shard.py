@@ -10,9 +10,9 @@ from typing import Any, cast
 from pirml.clock import SequenceClock
 from pirml.runtime.rpc import canonical_json
 from pirml.web.cache import cache_factory
+from pirml.web.eval import evidence_accuracy
 from pirml.web.fetch import CachedDocFetcher, FixtureDocFetcher
 from pirml.web.pipeline import WebPipeline, WebPlan
-from pirml.web.score import score_exact_match
 from pirml.web.search import provider_factory
 from pirml.web.taxonomy import classify_fail_tag
 from pirml.web.trace import WebTracer
@@ -92,15 +92,7 @@ async def run_shard(
         cache_hits = sum(1 for f in fetch_results if cast(Any, f).get("cache_hit"))
         cache_hit_rate = cache_hits / len(fetch_results) if fetch_results else 0.0
 
-        expected = str(q_row.get("expected_answer", query))
-        acc = score_exact_match(
-            expected=expected,
-            actual=final["answer"],
-            citation_count=len(final["citations"]),
-            require_citations=True,
-        )
-        # Persist exact score; tie-break jitter belongs in selector/ranker tuples, not eval evidence.
-        acc = round(acc, 4)
+        acc = evidence_accuracy(query=query, citations=final["citations"])
 
         tokens_in = len(query.split())
         tokens_out = len(final["answer"].split())

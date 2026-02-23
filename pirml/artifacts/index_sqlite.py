@@ -114,5 +114,40 @@ class ArtifactsIndex:
         rows = self._conn.execute("SELECT id FROM artifacts WHERE kind = ?", (kind,)).fetchall()
         return [r[0] for r in rows]
 
+    def list_meta(self, *, kind: str | None = None, limit: int | None = None) -> list[ArtifactMeta]:
+        query = "SELECT id, kind, mime, bytes, sha256, ts, src_json FROM artifacts"
+        params: list[object] = []
+        if kind is not None:
+            query += " WHERE kind = ?"
+            params.append(kind)
+        query += " ORDER BY ts ASC, id ASC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        rows = self._conn.execute(query, tuple(params)).fetchall()
+        metas: list[ArtifactMeta] = []
+        for row in rows:
+            aid = str(row[0])
+            parents = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT parent FROM parents WHERE child = ? ORDER BY pos", (aid,)
+                ).fetchall()
+            ]
+            metas.append(
+                {
+                    "id": aid,
+                    "kind": row[1],
+                    "mime": row[2],
+                    "bytes": row[3],
+                    "sha256": row[4],
+                    "ts": row[5],
+                    "src": json.loads(row[6]),
+                    "parents": parents,
+                }
+            )
+        return metas
+
     def close(self) -> None:
         self._conn.close()
