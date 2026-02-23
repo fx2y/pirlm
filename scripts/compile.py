@@ -69,6 +69,13 @@ def main() -> int:
             if stage != "internal":
                 err_type = cast(str, first_err.get("code", f"{stage}_fail"))
 
+    # Print smoke stderr if available
+    if err_obj.get("stage") == "smoke":
+        smoke_stderr = err_obj.get("stderr")
+        if smoke_stderr:
+            print("\nSmoke Stderr:", file=sys.stderr)
+            print(smoke_stderr, file=sys.stderr)
+
     print(
         f"Compilation failed [{err_type}]: {err_msg}",
         file=sys.stderr,

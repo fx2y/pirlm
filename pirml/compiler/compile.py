@@ -148,6 +148,14 @@ def compile_task(
                     "msg": "Unknown smoke failure",
                     "retryable": False,
                 }
+                # DEBUG: print smoke details
+                import sys
+
+                print("\n--- SMOKE FAILED ---", file=sys.stderr)
+                print(f"STDOUT:\n{smoke_res.stdout}", file=sys.stderr)
+                print(f"STDERR:\n{smoke_res.stderr}", file=sys.stderr)
+                print("--------------------\n", file=sys.stderr)
+
                 v_err: VerificationError = {
                     "code": smoke_err.get("type", "smoke_failed"),
                     "msg": smoke_err.get("msg", "Unknown smoke failure"),
@@ -164,7 +172,10 @@ def compile_task(
                 return {"ok": False, "error": err_file_smoke}
 
         # 7. Write artifacts
-        write_prog(out_dir / "prog.py", prog_src)
+        from pirml.compiler.assemble import assemble_prog
+
+        final_prog = assemble_prog(prog_src, contract)
+        write_prog(out_dir / "prog.py", final_prog)
         write_contract(out_dir / "contract.json", contract)
 
         artifacts: CompileArtifacts = {

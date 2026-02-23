@@ -90,7 +90,7 @@ python -m scripts.tool_manifest_lint --tools-dir tools
 python -m pirml --prog tests/prog_ok.py --out-dir out/showcase/003/qa/live > out/showcase/003/qa/live.stdout.ndjson
 python -m scripts.proto_lint --trace out/showcase/003/qa/live/trace.ndjson
 python -m scripts.trace_lint --trace out/showcase/003/qa/live/trace.ndjson
-python -m scripts.schema_lint
+python -m scripts.schema_lint --final out/showcase/003/qa/live/final.json
 python -m scripts.replay_check
 ```
 

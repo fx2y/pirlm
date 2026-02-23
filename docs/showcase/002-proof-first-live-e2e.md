@@ -42,7 +42,7 @@ python -m pirml --prog tests/prog_ok.py --timeout 0.001 --out-dir "$BASE/timeout
 # 6) observability + contract lint
 python -m scripts.proto_lint --trace "$BASE/live/trace.ndjson"
 python -m scripts.trace_lint --trace "$BASE/live/trace.ndjson"
-python -m scripts.schema_lint
+python -m scripts.schema_lint --final "$BASE/live/final.json"
 python -m scripts.replay_check
 ```
 
@@ -162,7 +162,7 @@ python -m scripts.trace_lint --trace out/showcase/002/s1/trace.ndjson
 
 ### S9: Schema contract lint
 ```bash
-python -m scripts.schema_lint
+python -m scripts.schema_lint --final out/showcase/002/s1/final.json
 ```
 
 ### S10: Canonical replay smoke
