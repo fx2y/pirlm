@@ -1,0 +1,23 @@
+flowchart LR
+  A[C0 reconcile] --> B[C1 product shell]
+  A --> C[C2 manifest contract]
+  B --> D[C3 tool init/lint/pack]
+  B --> E[C4 extension policy]
+  C --> F[C5 runtime policy adapters]
+  D --> G[C6 smoke+chaos+gate helpers]
+  E --> G
+  F --> G
+  G --> H[C7 hardening+sync+proof rerun]
+
+  subgraph HardLaws
+    L0[H7/H22 freeze]
+    L1[H11 parse fail-closed]
+    L2[H2 gate order immutable]
+    L3[H31 done requires rerun]
+  end
+
+  H --> P[Accepted only if proof bundle green]
+  L0 --> P
+  L1 --> P
+  L2 --> P
+  L3 --> P

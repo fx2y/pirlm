@@ -16,7 +16,9 @@ class LintFailure(Exception):
     retryable: bool = False
 
 
-def lint_tools_dir(tools_dir: Path) -> tuple[dict[str, ToolManifest], list[ManifestError]]:
+def lint_tools_dir(
+    tools_dir: Path, *, enforce_hot_count: bool = True
+) -> tuple[dict[str, ToolManifest], list[ManifestError]]:
     if not tools_dir.exists():
         raise LintFailure("config", f"tools directory not found: {tools_dir}", 2, False)
 
@@ -28,7 +30,7 @@ def lint_tools_dir(tools_dir: Path) -> tuple[dict[str, ToolManifest], list[Manif
     if not catalog:
         raise LintFailure("validation", f"no manifests found in {tools_dir}", 1, False)
 
-    return catalog, lint_catalog(catalog)
+    return catalog, lint_catalog(catalog, enforce_hot_count=enforce_hot_count)
 
 
 __all__ = ["lint_manifest", "lint_catalog", "lint_tools_dir", "LintFailure"]

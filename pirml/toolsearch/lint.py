@@ -278,8 +278,14 @@ def lint_manifest(manifest: Any) -> list[ManifestError]:
     return errors
 
 
-def lint_catalog(catalog: dict[str, ToolManifest]) -> list[ManifestError]:
-    """C1.T3: Catalog-wide quality gates."""
+def lint_catalog(
+    catalog: dict[str, ToolManifest], *, enforce_hot_count: bool = True
+) -> list[ManifestError]:
+    """C1.T3: Catalog-wide quality gates.
+
+    `enforce_hot_count=False` is a bootstrap lane for authoring flows where a
+    single freshly scaffolded tool should still validate at manifest level.
+    """
     errors: list[ManifestError] = []
 
     # all-deferred reject
@@ -298,7 +304,7 @@ def lint_catalog(catalog: dict[str, ToolManifest]) -> list[ManifestError]:
             err["path"] = f"{name}.{err['path']}" if err["path"] else name
             errors.append(err)
 
-    if catalog:
+    if catalog and enforce_hot_count:
         if all_deferred:
             errors.append(
                 {

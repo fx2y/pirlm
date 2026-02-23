@@ -91,7 +91,7 @@ def _init_scaffold(name: str, tools_dir: Path, force: bool) -> dict[str, str]:
 
 def _lint_command(tools_dir: Path) -> int:
     try:
-        catalog, errors = lint_tools_dir(tools_dir)
+        catalog, errors = lint_tools_dir(tools_dir, enforce_hot_count=False)
     except LintFailure as err:
         raise CliFailure(err.err_type, err.msg, err.code, err.retryable) from err
     if errors:

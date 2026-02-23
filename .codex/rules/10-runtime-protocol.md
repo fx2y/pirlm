@@ -13,32 +13,38 @@ paths:
 ---
 # Runtime + Protocol Rules (Normative)
 
-- `R0` `L0` freeze is strict: runtime/replay/tool/channel/boundary contracts cannot mutate; `L1` adds external wrappers only.
-- `R1` Channel split absolute: runtime stdout emits protocol rows only; diagnostics/errors stay stderr/artifacts.
-- `R2` Protocol algebra closed: `op in {call,result,final,custom}` only; unknown op/order/cardinality is integrity failure.
-- `R3` Final law: exactly one `final`, strictly last; every `result.id` must reference a prior `call.id`.
-- `R4` Envelope law: `id=^c[0-9]{5}$` unique+monotonic/run; `seq` starts `1` then strict `+1`; key order deterministic.
-- `R5` Byte/hash law: hash persisted post-transform bytes only; never hash pre-write/pre-truncation strings.
-- `R6` Truncation law: boundary writer owns cap (`8192` default); only `result` may truncate; truncation metadata required; hash truncated bytes.
-- `R7` Redaction law: sensitive keys (`token|password|secret|api[_]?key|authorization|auth*`) become deterministic `{redacted_sha256}`.
-- `R8` Evidence law: every run (incl fatal) emits `trace.ndjson` + `final.json`; all emitted pointers must resolve.
-- `R9` Boundary law: `final.json` root fixed to `{ok,results,output?,meta?}`; bulky lineage/debug/raw payload moves to artifacts/custom data.
-- `R10` Replay law: validate trace (`op|order|id|hash|envelope`) before replay; replay forces `PIRML_BLOCK_TOOLS=1`; parity drift hard-fails.
-- `R11` Replay-guard law: task-level replay checks must execute real deterministic snapshots (not env-toggle stubs); mismatch/error => `REPLAY_MISMATCH` fail lane.
-- `R12` Tool law: runtime tool registry is exact `{echo,readfile,bash}`; helper APIs (`get/put/llm_query/amap`) are internal seams, not tool growth.
-- `R13` Compiler law: per run exactly one branch: `{prog.py+contract.json}` xor `{compile_error.json}`.
-- `R14` Eval law: every declared row executes or emits typed unsupported; no silent skip/fallback/default winner.
-- `R15` Winner law: deterministic tuple ranking only; hashseed-invariant; `hash()` forbidden on eval paths.
-- `R16` Config law: strict exhaustive parse; unknown provider/cache/variant/plan/path/flag => typed fail.
-- `R17` Dataset ingress law: explicit dataset path only; prompt key fallback order must never include answer keys; duplicate `task_id` is integrity-fail.
-- `R18` Resume law: shard NDJSON is append-only; existing rows must pass seq `1,+1` integrity and single terminal/task uniqueness; resume appends audit notes only.
-- `R19` Parser-unity law: report ingestion must reuse runner-equivalent parser/merge invariants; corrupt/duplicate terminal evidence maps to integrity/code2.
-- `R20` Metrics/taxonomy law: required eval metric keys are schema-single-source; `fail_tag` single-label; `NO_CITE` explicit; persisted `acc` exact (jitter forbidden in evidence).
-- `R21` Deterministic timing law: scored fields cannot use wall clock as semantic input; timing-derived fields must derive from deterministic inputs when required by contract.
-- `R22` Governor law: hard budgets (`iters|subcalls|timeout`) plus deterministic packing/merge; warn/fail lanes typed, never silent.
-- `R23` Pointer law: lineage spillover uses `op=custom`; custom rows obey same hash/redact laws; custom rows never enter context packing.
-- `R24` Pointer payload law: rich nav payload stays in `custom.data/details`; `custom_message` is optional one-line hint, max `120` chars.
-- `R25` Execution-owner law: wrappers delegate through one path `scripts.pirml_run -> pirml.ux.runtime_bridge -> python -m pirml`.
-- `R26` Projection law: `.pirml/*` is projection-only facade; never rewrite/delete non-projection user dirs.
-- `R27` Optional-feature law: gated capabilities (hybrid/headless/parallel jobs/etc.) default off and typed-return unsupported when disabled/unimplemented.
-- `R28` Semantic-change law: deltas touching op/tool/replay/compile/eval/schema/gates require same-change invariant delta + failing test + ledger/doc sync.
+## R0-R9 Core
+- `R0` `L0` freeze strict: runtime/replay/tool/channel/boundary immutable; `L1` wrappers only.
+- `R1` stdout protocol-only; diagnostics/errors to stderr/artifacts.
+- `R2` `op in {call,result,final,custom}` only.
+- `R3` exactly one `final`, strictly last; each `result.id` maps to prior `call.id`.
+- `R4` `id=^c[0-9]{5}$` uniq+mono/run; `seq` is `1,+1`; key order deterministic.
+- `R5` hash persisted post-transform bytes only.
+- `R6` only `result` truncates; boundary owns cap; truncation metadata mandatory.
+- `R7` sensitive keys redact to deterministic `{redacted_sha256}`.
+- `R8` every run (incl fatal) emits `trace.ndjson` + `final.json`; all pointers resolve.
+- `R9` `final.json` root fixed `{ok,results,output?,meta?}`; bulky payload in artifacts/custom.
+
+## R10-R19 Replay + Eval
+- `R10` replay validates `op|order|id|hash|envelope`; forces `PIRML_BLOCK_TOOLS=1`; parity drift hard-fails.
+- `R11` replay guard runs real deterministic task snapshots; mismatch/error => typed replay-mismatch lane.
+- `R12` runtime tool registry exact `{echo,readfile,bash}`; helper APIs are internal seams only.
+- `R13` compile XOR per run: `{prog.py+contract.json}` xor `{compile_error.json}`.
+- `R14` every declared eval row executes or typed-returns unsupported; no silent skip/fallback.
+- `R15` winner selection uses deterministic tuple ranking only; `hash()` forbidden in eval paths.
+- `R16` unknown provider/cache/variant/plan/path/flag/cli-arg => typed fail-closed envelope.
+- `R17` dataset path explicit; scored prompt key never falls back to answer keys; duplicate `task_id` is integrity fail.
+- `R18` shard NDJSON append-only; existing rows must satisfy seq integrity + one terminal/task.
+- `R19` report ingestion reuses runner-equivalent parse/merge policy; corrupt/dup terminal evidence => integrity/code2.
+
+## R20-R29 Determinism + Ownership
+- `R20` metrics/taxonomy fixed by schema: required keys, single-label `fail_tag`, explicit `NO_CITE`, exact persisted `acc`.
+- `R21` no wall-clock semantics in scored fields; contract-relevant timing fields deterministic.
+- `R22` enforce hard budgets (`iters|subcalls|timeout`) with deterministic pack/merge; warn/fail lanes typed.
+- `R23` lineage spillover uses `custom`; same hash/redaction laws; custom rows never enter context packing.
+- `R24` rich pointer payload in `custom.data/details`; human hint optional one-line `<=120` chars.
+- `R25` wrappers delegate only through `scripts.pirml_run -> pirml.ux.runtime_bridge -> python -m pirml`.
+- `R26` `.pirml/*` is projection-only facade; never rewrite/delete non-projection user dirs.
+- `R27` optional features default-off; disabled/unimplemented lanes typed-return unsupported.
+- `R28` independent work uses bounded deterministic fanout/merge; serial needs explicit reason.
+- `R29` changes touching `op|tool|replay|compile|eval|schema|gates|cli-parse` need invariant delta + failing test + ledger/doc sync.

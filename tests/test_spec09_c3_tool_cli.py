@@ -107,6 +107,17 @@ class Spec09C3ToolCliTests(unittest.TestCase):
             self.assertIn("errors", err["data"])
             self.assertGreaterEqual(len(err["data"]["errors"]), 1)
 
+    def test_tool_lint_bootstrap_single_init_catalog_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            init_proc = self._run("tool", "init", "demo.echo", "--tools-dir", str(tools_dir))
+            self.assertEqual(init_proc.returncode, 0, init_proc.stderr)
+            lint_proc = self._run("tool", "lint", "--tools-dir", str(tools_dir))
+            self.assertEqual(lint_proc.returncode, 0, lint_proc.stderr)
+            payload = json.loads(lint_proc.stdout.strip())
+            self.assertTrue(bool(payload["ok"]))
+            self.assertEqual(int(payload["count"]), 1)
+
     def test_pack_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -142,6 +153,21 @@ class Spec09C3ToolCliTests(unittest.TestCase):
             self.assertEqual(proc.returncode, 2)
             err = json.loads(proc.stderr.strip())
             self.assertEqual(err["type"], "config")
+
+    def test_pack_fails_on_underfilled_hot_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            init_proc = self._run("tool", "init", "demo.echo", "--tools-dir", str(tools_dir))
+            self.assertEqual(init_proc.returncode, 0, init_proc.stderr)
+            proc = self._run(
+                "tool", "pack", "--tools-dir", str(tools_dir), "--out", str(Path(tmp) / "pack.json")
+            )
+            self.assertEqual(proc.returncode, 1)
+            err = json.loads(proc.stderr.strip())
+            self.assertEqual(err["type"], "validation")
+            self.assertIn("cannot pack invalid catalog", err["msg"])
+            self.assertIn("data", err)
+            self.assertIn("errors", err["data"])
 
     def test_init_parse_missing_required_name_typed_no_usage(self) -> None:
         proc = self._run("tool", "init")

@@ -101,6 +101,7 @@ class TestToolSearchLint(unittest.TestCase):
             errors = lint_catalog(catalog)
             self.assertTrue(any(e["code"] == "C1" for e in errors))
             self.assertTrue(any(e["code"] == "C2" for e in errors))
+            self.assertEqual(lint_catalog(catalog, enforce_hot_count=False), [])
 
             for f in d.glob("*.json"):
                 f.unlink()
