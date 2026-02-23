@@ -100,6 +100,7 @@ def _lint_command(tools_dir: Path) -> int:
             f"manifest lint failed: {len(errors)} error(s) in {tools_dir}",
             1,
             retryable=False,
+            data={"errors": errors},
         )
     print(json.dumps({"ok": True, "tools_dir": str(tools_dir), "count": len(catalog)}))
     return 0
@@ -121,6 +122,7 @@ def _pack_payload(tools_dir: Path) -> dict[str, Any]:
             f"cannot pack invalid catalog: {len(lint_errors)} lint error(s)",
             1,
             retryable=False,
+            data={"errors": lint_errors},
         )
 
     docs: list[dict[str, Any]] = []

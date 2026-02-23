@@ -103,6 +103,9 @@ class Spec09C3ToolCliTests(unittest.TestCase):
             self.assertEqual(fail_proc.returncode, 1)
             err = json.loads(fail_proc.stderr.strip())
             self.assertEqual(err["type"], "validation")
+            self.assertIn("data", err)
+            self.assertIn("errors", err["data"])
+            self.assertGreaterEqual(len(err["data"]["errors"]), 1)
 
     def test_pack_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -36,16 +36,29 @@ class ThresholdConfig:
 
 
 class CliFailure(Exception):
-    def __init__(self, err_type: str, msg: str, code: int, retryable: bool = False) -> None:
+    def __init__(
+        self,
+        err_type: str,
+        msg: str,
+        code: int,
+        retryable: bool = False,
+        data: Any | None = None,
+    ) -> None:
         super().__init__(msg)
         self.err_type = err_type
         self.msg = msg
         self.code = code
         self.retryable = retryable
+        self.data = data
 
 
-def _typed_error(err_type: str, msg: str, retryable: bool = False) -> dict[str, object]:
-    return {"type": err_type, "msg": msg, "retryable": retryable}
+def _typed_error(
+    err_type: str, msg: str, retryable: bool = False, data: Any | None = None
+) -> dict[str, object]:
+    res: dict[str, Any] = {"type": err_type, "msg": msg, "retryable": retryable}
+    if data is not None:
+        res["data"] = data
+    return res
 
 
 def _normalize_argparse_message(message: str | None) -> str:
@@ -228,5 +241,8 @@ def _validate_eval_config_types(payload_map: dict[str, Any]) -> None:
 
 
 def emit_failure(err: CliFailure) -> int:
-    print(json.dumps(_typed_error(err.err_type, err.msg, err.retryable)), file=sys.stderr)
+    print(
+        json.dumps(_typed_error(err.err_type, err.msg, err.retryable, err.data)),
+        file=sys.stderr,
+    )
     return err.code
