@@ -79,12 +79,13 @@ def run_doctor_command(argv: list[str]) -> int:
             "mkdir -p .pi/extensions",
         ),
     ]
-    if global_ext.exists() or project_ext.exists():
+    found = [p for p in (project_ext, global_ext) if p.exists()]
+    if found:
         rows.append(
             {
                 "check": "extension_presence",
                 "ok": True,
-                "paths": [str(project_ext), str(global_ext)],
+                "paths": [str(p) for p in found],
             }
         )
     else:

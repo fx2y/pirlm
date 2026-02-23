@@ -3,8 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pirml.cli_common import CliFailure, strict_parse_args
 from pirml.runtime.lint import LintFailure, lint_tools_dir
@@ -14,10 +15,28 @@ from pirml.toolsearch.lint import lint_catalog
 from pirml.toolsearch.loader import catalog_hash, load_catalog
 from pirml.toolsearch.search import search_tools
 
+if TYPE_CHECKING:
+    from pirml.contracts.schemas import ToolManifest
+
 _TOOL_NAME_RE = re.compile(r"^[a-z0-9_]+(\.[a-z0-9_]+)+$")
 
 
-def _base_manifest(name: str) -> dict[str, Any]:
+def _catalog_all_deferred(catalog: Mapping[str, ToolManifest]) -> bool:
+    return all(bool(manifest.get("defer_loading", True)) for manifest in catalog.values())
+
+
+def _build_rankings(
+    catalog: Mapping[str, ToolManifest], allow_all_deferred: bool
+) -> list[dict[str, Any]]:
+    names = sorted(catalog.keys())
+    if allow_all_deferred and _catalog_all_deferred(catalog):
+        # Bootstrap catalogs may be intentionally all-deferred; keep ranking deterministic
+        # without routing through the stricter search precondition.
+        return [{"query": name, "top_k": names[:K_CAP]} for name in names]
+    return [{"query": name, "top_k": search_tools(catalog, name, k=K_CAP)} for name in names]
+
+
+def _base_manifest(name: str, hot: bool = False) -> dict[str, Any]:
     description = (
         f"{name} processes deterministic inputs and returns bounded structured output. "
         "Use it when a focused transformation is required. "
@@ -44,11 +63,11 @@ def _base_manifest(name: str) -> dict[str, Any]:
         "retry": {"max_attempts": 1},
         "allowed_callers": ["code_exec"],
         "tags": ["custom"],
-        "defer_loading": True,
+        "defer_loading": not hot,
     }
 
 
-def _init_scaffold(name: str, tools_dir: Path, force: bool) -> dict[str, str]:
+def _init_scaffold(name: str, tools_dir: Path, force: bool, hot: bool = False) -> dict[str, str]:
     if _TOOL_NAME_RE.match(name) is None:
         raise CliFailure(
             "validation",
@@ -65,7 +84,7 @@ def _init_scaffold(name: str, tools_dir: Path, force: bool) -> dict[str, str]:
     if not force and any(path.exists() for path in paths):
         raise CliFailure("validation", f"tool scaffold already exists: {name}", 1, retryable=False)
 
-    manifest = _base_manifest(name)
+    manifest = _base_manifest(name, hot=hot)
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=True, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -106,7 +125,7 @@ def _lint_command(tools_dir: Path) -> int:
     return 0
 
 
-def _pack_payload(tools_dir: Path) -> dict[str, Any]:
+def _pack_payload(tools_dir: Path, enforce_hot_count: bool = True) -> dict[str, Any]:
     if not tools_dir.exists():
         raise CliFailure("config", f"tools directory not found: {tools_dir}", 2, retryable=False)
     try:
@@ -115,7 +134,7 @@ def _pack_payload(tools_dir: Path) -> dict[str, Any]:
         raise CliFailure("integrity", str(exc), 2, retryable=False) from exc
     if not catalog:
         raise CliFailure("validation", f"no manifests found in {tools_dir}", 1, retryable=False)
-    lint_errors = lint_catalog(catalog)
+    lint_errors = lint_catalog(catalog, enforce_hot_count=enforce_hot_count)
     if lint_errors:
         raise CliFailure(
             "validation",
@@ -126,7 +145,6 @@ def _pack_payload(tools_dir: Path) -> dict[str, Any]:
         )
 
     docs: list[dict[str, Any]] = []
-    rankings: list[dict[str, Any]] = []
     for name in sorted(catalog.keys()):
         manifest = catalog[name]
         schema = manifest.get("input_schema") or {}
@@ -139,7 +157,7 @@ def _pack_payload(tools_dir: Path) -> dict[str, Any]:
                 "doc": tool_doc_fields(manifest),
             }
         )
-        rankings.append({"query": name, "top_k": search_tools(catalog, name, k=K_CAP)})
+    rankings = _build_rankings(catalog, allow_all_deferred=not enforce_hot_count)
     return {
         "catalog_hash": catalog_hash(catalog),
         "k_cap": K_CAP,
@@ -149,8 +167,8 @@ def _pack_payload(tools_dir: Path) -> dict[str, Any]:
     }
 
 
-def _pack_command(tools_dir: Path, out: Path) -> int:
-    payload = _pack_payload(tools_dir)
+def _pack_command(tools_dir: Path, out: Path, bootstrap: bool = False) -> int:
+    payload = _pack_payload(tools_dir, enforce_hot_count=not bootstrap)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(canonical_json(payload) + "\n", encoding="utf-8")
     print(
@@ -167,6 +185,9 @@ def run_tool_command(argv: list[str]) -> int:
     init_parser.add_argument("name")
     init_parser.add_argument("--tools-dir", default="tools")
     init_parser.add_argument("--force", action="store_true")
+    init_parser.add_argument(
+        "--hot", action="store_true", help="Set defer_loading=false (hot tool)"
+    )
 
     lint_parser = sub.add_parser("lint", help="Lint tool manifests")
     lint_parser.add_argument("--tools-dir", default="tools")
@@ -174,15 +195,20 @@ def run_tool_command(argv: list[str]) -> int:
     pack_parser = sub.add_parser("pack", help="Write deterministic tool index artifact")
     pack_parser.add_argument("--tools-dir", default="tools")
     pack_parser.add_argument("--out", default="out/tool-pack.json")
+    pack_parser.add_argument(
+        "--bootstrap", action="store_true", help="Allow underfilled hot catalog"
+    )
 
     args = strict_parse_args(parser, argv)
     tool_cmd = str(args.tool_cmd)
     if tool_cmd == "init":
-        files = _init_scaffold(str(args.name), Path(args.tools_dir), bool(args.force))
+        files = _init_scaffold(
+            str(args.name), Path(args.tools_dir), bool(args.force), hot=bool(args.hot)
+        )
         print(json.dumps({"ok": True, "name": args.name, "files": files}, sort_keys=True))
         return 0
     if tool_cmd == "lint":
         return _lint_command(Path(args.tools_dir))
     if tool_cmd == "pack":
-        return _pack_command(Path(args.tools_dir), Path(args.out))
+        return _pack_command(Path(args.tools_dir), Path(args.out), bootstrap=bool(args.bootstrap))
     raise CliFailure("config", f"unknown tool command: {tool_cmd}", 2, retryable=False)

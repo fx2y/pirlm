@@ -43,6 +43,13 @@ def _normalize_query(query: str) -> str:
     return query.strip().lower()
 
 
+def _validate_catalog(catalog: Mapping[str, ToolManifest]) -> None:
+    if not catalog:
+        raise SearchError("missing_tool_definition", "Tool catalog is empty")
+    if all(manifest.get("defer_loading", True) for manifest in catalog.values()):
+        raise SearchError("all_deferred", "All tools in catalog are deferred")
+
+
 def _is_ci() -> bool:
     return os.getenv("CI", "0") in ("1", "true", "TRUE")
 
@@ -241,10 +248,7 @@ def search_tools(
     k = min(k, K_CAP)  # G.P1.7
     mode = mode or _resolve_auto_mode(query)  # G.P2.6
 
-    if not catalog:
-        raise SearchError("missing_tool_definition", "Tool catalog is empty")
-    if all(m.get("defer_loading", True) for m in catalog.values()):
-        raise SearchError("all_deferred", "All tools in catalog are deferred")
+    _validate_catalog(catalog)
 
     cat_hash = get_catalog_hash(catalog)
     if cat_hash not in REWRITE_CACHE:

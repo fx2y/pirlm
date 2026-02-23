@@ -154,6 +154,32 @@ class Spec09C3ToolCliTests(unittest.TestCase):
             err = json.loads(proc.stderr.strip())
             self.assertEqual(err["type"], "config")
 
+    def test_init_hot_sets_defer_loading_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            proc = self._run("tool", "init", "demo.hot", "--tools-dir", str(tools_dir), "--hot")
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            manifest = json.loads((tools_dir / "demo.hot.json").read_text(encoding="utf-8"))
+            self.assertFalse(manifest.get("defer_loading"))
+
+    def test_pack_with_bootstrap_passes_on_underfilled_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tools_dir = Path(tmp) / "tools"
+            init_proc = self._run("tool", "init", "demo.echo", "--tools-dir", str(tools_dir))
+            self.assertEqual(init_proc.returncode, 0, init_proc.stderr)
+            # Should pass with --bootstrap
+            proc = self._run(
+                "tool",
+                "pack",
+                "--tools-dir",
+                str(tools_dir),
+                "--out",
+                str(Path(tmp) / "pack.json"),
+                "--bootstrap",
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertTrue((Path(tmp) / "pack.json").exists())
+
     def test_pack_fails_on_underfilled_hot_catalog(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tools_dir = Path(tmp) / "tools"
