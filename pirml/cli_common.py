@@ -64,6 +64,8 @@ def _typed_error(
 def _normalize_argparse_message(message: str | None) -> str:
     if not message:
         return "invalid arguments"
+    if "invalid choice:" in message:
+        return "unknown command"
     lines = [line.strip() for line in message.splitlines() if line.strip()]
     if not lines:
         return "invalid arguments"

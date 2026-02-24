@@ -19,7 +19,18 @@ def _task_sort_key(row: dict[str, Any]) -> tuple[str, int, int, int]:
 
 
 def read_eval_rows(paths: list[str]) -> list[dict[str, Any]]:
-    rows = merge_rows([Path(p) for p in paths])
+    all_files: list[Path] = []
+    for p in paths:
+        path = Path(p)
+        if path.is_dir():
+            all_files.extend(path.rglob("*.ndjson"))
+        elif path.is_file():
+            all_files.append(path)
+        else:
+            raise CliFailure("unsupported", f"input not found: {p}", 1, retryable=False)
+    if not all_files:
+        raise CliFailure("unsupported", "no input files found", 1, retryable=False)
+    rows = merge_rows(sorted(list(set(all_files))))
     return [row for row in rows]
 
 
@@ -118,6 +129,29 @@ def aggregate_report(
     no_cite_rate = fail_tag_map.get("NO_CITE", 0) / total
     replay_mismatch_rate = fail_tag_map.get("REPLAY_MISMATCH", 0) / total
 
+    fail_lane: dict[str, Any] = {
+        "REPLAY_MISMATCH": {
+            "count": fail_tag_map.get("REPLAY_MISMATCH", 0),
+            "top_task_ids": [
+                {"task_id": tid, "count": cnt}
+                for tid, cnt in sorted(
+                    failed_ids_by_tag.get("REPLAY_MISMATCH", Counter()).items(),
+                    key=lambda x: (-x[1], x[0]),
+                )[:5]
+            ],
+        },
+        "TIMEOUT": {
+            "count": fail_tag_map.get("TIMEOUT", 0),
+            "top_task_ids": [
+                {"task_id": tid, "count": cnt}
+                for tid, cnt in sorted(
+                    failed_ids_by_tag.get("TIMEOUT", Counter()).items(),
+                    key=lambda x: (-x[1], x[0]),
+                )[:5]
+            ],
+        },
+    }
+
     suite_values = sorted(
         {str(row.get("suite", "")) for row in terminal_rows if str(row.get("suite", ""))}
     )
@@ -137,6 +171,7 @@ def aggregate_report(
         "no_cite_rate": round(no_cite_rate, 6),
         "replay_mismatch_rate": round(replay_mismatch_rate, 6),
         "fail_pareto": fail_pareto,
+        "fail_lane": fail_lane,
         "kpi_wall": {
             "acc": round(acc, 6),
             "acc_per_$": round(acc_per_dollar, 6),

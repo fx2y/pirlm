@@ -150,3 +150,28 @@ run = "python -m scripts.spec10_surface --help"
 [tasks."spec10-sales"]
 description = "Spec10 C5 smoke: persona packaging + sales scripts"
 run = "python -m scripts.spec10_proof_pack --skip-run --out out/spec10_pack/index.jsonl && python -m scripts.spec10_sales_pack --out out/spec10_sales --pack-index out/spec10_pack/index.jsonl"
+
+[tasks."ultra-signoff"]
+description = "Showcase: complete live signoff (Spec08-10) with one command"
+run = """
+mise run fast
+mise run ci
+python -m scripts.replay_check
+python -m scripts.artifact_rebuild --check
+python -m scripts.spec10_matrix
+BASE=out/signoff/dev
+TOOLS="$BASE/tools"
+mkdir -p "$TOOLS"
+python -m pirml tool init acme.lookup --tools-dir "$TOOLS" --force
+python -m pirml tool lint --tools-dir "$TOOLS"
+python -m pirml tool pack --tools-dir "$TOOLS" --out "$BASE/toolpack.json" --bootstrap
+python -m pirml doctor --home "$BASE/home" || true
+python -m pirml.eval --suite golden50 --dataset spec-0/08/golden50.jsonl --jobs 1 --out-dir out/eval/golden50
+python -m pirml.report out/eval/golden50/runs/golden50/*.ndjson --out out/eval/golden50/report.json
+python -m pirml.md out/eval/golden50/report.json > out/eval/golden50/report.md
+python -m scripts.spec10_incident --trace out/ci/trace.ndjson --out-dir out/signoff/incident
+python -m pirml surface console --run out/ci
+python -m pirml surface evidence --trace out/ci/trace.ndjson
+python -m scripts.spec10_proof_pack --out out/signoff/proof_index.jsonl
+python -m scripts.spec10_sales_pack --out out/signoff/sales --pack-index out/signoff/proof_index.jsonl --emit-md
+"""

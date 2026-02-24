@@ -49,8 +49,22 @@ def _render(report: dict[str, Any]) -> str:
         f"- no_cite_rate: {float(report.get('no_cite_rate', 0.0) or 0.0):.6f}",
         f"- replay_mismatch_rate: {float(report.get('replay_mismatch_rate', 0.0) or 0.0):.6f}",
         "",
-        "## Pareto",
+        "## Fail Lane",
     ]
+    fail_lane = report.get("fail_lane", {})
+    for lane_id in sorted(fail_lane.keys()):
+        lane = fail_lane[lane_id]
+        lines.append(f"- {lane_id}: {int(lane.get('count', 0) or 0)}")
+        for task_row in lane.get("top_task_ids", [])[:3]:
+            if not isinstance(task_row, dict):
+                continue
+            task_map = cast(dict[str, Any], task_row)
+            lines.append(
+                f"  - {str(task_map.get('task_id', ''))}: {int(task_map.get('count', 0) or 0)}"
+            )
+
+    lines.append("")
+    lines.append("## Pareto")
     for row in report.get("fail_pareto", []):
         if not isinstance(row, dict):
             continue
@@ -65,7 +79,7 @@ def _render(report: dict[str, Any]) -> str:
             )
     lines.append("")
     lines.append("## Notes")
-    for note in notes:
+    for note in sorted(notes):
         lines.append(f"- {note}")
     lines.append("")
     return "\n".join(lines)

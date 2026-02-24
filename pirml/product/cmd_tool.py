@@ -136,9 +136,12 @@ def _pack_payload(tools_dir: Path, enforce_hot_count: bool = True) -> dict[str, 
         raise CliFailure("validation", f"no manifests found in {tools_dir}", 1, retryable=False)
     lint_errors = lint_catalog(catalog, enforce_hot_count=enforce_hot_count)
     if lint_errors:
+        msg = f"cannot pack invalid catalog: {len(lint_errors)} lint error(s)"
+        if enforce_hot_count and any(err.get("code") == "C2" for err in lint_errors):
+            msg += ". Use --bootstrap to allow underfilled hot catalog (e.g. single-tool proto)."
         raise CliFailure(
             "validation",
-            f"cannot pack invalid catalog: {len(lint_errors)} lint error(s)",
+            msg,
             1,
             retryable=False,
             data={"errors": lint_errors},

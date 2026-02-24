@@ -9,6 +9,11 @@ from pathlib import Path
 from .cli_common import CliFailure, emit_failure, strict_parse_args
 from .clock import SequenceClock
 from .engine import run_live, run_replay
+from .product.cmd_doctor import run_doctor_command
+from .product.cmd_incident import run_incident_command
+from .product.cmd_surface import run_surface_command
+from .product.cmd_tool import run_tool_command
+from .product.install_ext import run_install_command, run_uninstall_command
 from .protocol import (
     MAX_LINE_BYTES_DEFAULT,
     ProtocolError,
@@ -28,11 +33,13 @@ _PRODUCT_COMMANDS = frozenset(
 def build_legacy_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pirml",
+        description="PIRML Product Shell",
         epilog=(
-            "Product commands: doctor, install-pi-ext, uninstall-pi-ext, replay, "
-            "tool <init|lint|pack>"
+            "Product commands: doctor, run, replay, tool, surface, incident, "
+            "install-pi-ext, uninstall-pi-ext"
         ),
     )
+    # Legacy flags (top-level)
     parser.add_argument("--prog", help="Path to Python program file defining PROGRAM list")
     parser.add_argument("--replay", help="Replay from existing trace.ndjson")
     parser.add_argument(
@@ -40,6 +47,18 @@ def build_legacy_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--max-line-bytes", type=int, default=MAX_LINE_BYTES_DEFAULT)
     parser.add_argument("--timeout", type=float, default=30.0, help="Global run timeout in seconds")
+
+    # Subcommands
+    sub = parser.add_subparsers(dest="product_cmd")
+    sub.add_parser("doctor", help="Environment check")
+    sub.add_parser("run", help="Unified run (delegates to scripts.pirml_run)")
+    sub.add_parser("replay", help="Unified replay (delegates to scripts.tools.replay)")
+    sub.add_parser("tool", help="Tool authoring (init|lint|pack)")
+    sub.add_parser("surface", help="Surface resolver views (console|evidence|eval|policy)")
+    sub.add_parser("incident", help="One-command incident triage")
+    sub.add_parser("install-pi-ext", help="Install extension")
+    sub.add_parser("uninstall-pi-ext", help="Uninstall extension")
+
     return parser
 
 
@@ -98,37 +117,6 @@ def _run_legacy(args: argparse.Namespace) -> int:
     return 0 if ok is True else 1
 
 
-def _main_legacy(argv: list[str] | None) -> int:
-    parser = build_legacy_parser()
-    try:
-        args = strict_parse_args(parser, argv)
-        return _run_legacy(args)
-    except CliFailure as err:
-        return emit_failure(err)
-    except ValueError as exc:
-        return emit_failure(CliFailure("config", str(exc), 2, retryable=False))
-    except (OSError, ProtocolError) as exc:
-        return emit_failure(CliFailure("integrity", str(exc), 2, retryable=False))
-
-
-def _cmd_doctor(argv: list[str]) -> int:
-    from .product.cmd_doctor import run_doctor_command
-
-    return run_doctor_command(argv)
-
-
-def _cmd_install(argv: list[str]) -> int:
-    from .product.install_ext import run_install_command
-
-    return run_install_command(argv)
-
-
-def _cmd_uninstall(argv: list[str]) -> int:
-    from .product.install_ext import run_uninstall_command
-
-    return run_uninstall_command(argv)
-
-
 def _cmd_replay(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="pirml replay")
     parser.add_argument("prog", help="Path to Python program file defining PROGRAM list")
@@ -160,26 +148,6 @@ def _cmd_replay(argv: list[str]) -> int:
     return int(proc.returncode)
 
 
-def _cmd_tool(argv: list[str]) -> int:
-    from .product.cmd_tool import run_tool_command
-
-    return run_tool_command(argv)
-
-
-def _cmd_surface(argv: list[str]) -> int:
-    # Delegate to scripts.spec10_surface.main
-    from scripts.spec10_surface import main as surface_main
-
-    return surface_main(argv)
-
-
-def _cmd_incident(argv: list[str]) -> int:
-    # Delegate to scripts.spec10_incident.main
-    from scripts.spec10_incident import main as incident_main
-
-    return incident_main(argv)
-
-
 def _cmd_run(argv: list[str]) -> int:
     # Delegate to scripts.pirml_run.main
     from scripts.pirml_run import main as run_main
@@ -193,19 +161,19 @@ def _cmd_run(argv: list[str]) -> int:
 
 def _dispatch_product(cmd: str, argv: list[str]) -> int:
     if cmd == "doctor":
-        return _cmd_doctor(argv)
+        return run_doctor_command(argv)
     if cmd == "install-pi-ext":
-        return _cmd_install(argv)
+        return run_install_command(argv)
     if cmd == "uninstall-pi-ext":
-        return _cmd_uninstall(argv)
+        return run_uninstall_command(argv)
     if cmd == "replay":
         return _cmd_replay(argv)
     if cmd == "tool":
-        return _cmd_tool(argv)
+        return run_tool_command(argv)
     if cmd == "surface":
-        return _cmd_surface(argv)
+        return run_surface_command(argv)
     if cmd == "incident":
-        return _cmd_incident(argv)
+        return run_incident_command(argv)
     if cmd == "run":
         return _cmd_run(argv)
     raise CliFailure("config", f"unknown command: {cmd}", 2, retryable=False)
@@ -226,8 +194,20 @@ def main(argv: list[str] | None = None) -> int:
                     file=sys.stderr,
                 )
                 return 2
-        return emit_failure(CliFailure("config", f"unknown command: {cmd}", 2, retryable=False))
-    return _main_legacy(raw_argv)
+
+    # Handle legacy flags or help
+    parser = build_legacy_parser()
+    try:
+        args = strict_parse_args(parser, raw_argv)
+        if args.product_cmd:
+            return _dispatch_product(args.product_cmd, raw_argv[1:])
+        return _run_legacy(args)
+    except CliFailure as err:
+        return emit_failure(err)
+    except ValueError as exc:
+        return emit_failure(CliFailure("config", str(exc), 2, retryable=False))
+    except (OSError, ProtocolError) as exc:
+        return emit_failure(CliFailure("integrity", str(exc), 2, retryable=False))
 
 
 if __name__ == "__main__":

@@ -46,7 +46,8 @@ class Spec09C7HardeningSyncTests(unittest.TestCase):
 
         top_help = self._run("-h")
         self.assertEqual(top_help.returncode, 0, top_help.stderr)
-        self.assertIn("doctor, install-pi-ext, uninstall-pi-ext, replay, tool", top_help.stdout)
+        for cmd in ["doctor", "install-pi-ext", "uninstall-pi-ext", "replay", "tool"]:
+            self.assertIn(cmd, top_help.stdout)
         tool_help = self._run("tool", "-h")
         self.assertEqual(tool_help.returncode, 0, tool_help.stderr)
         self.assertIn("{init,lint,pack}", tool_help.stdout)
