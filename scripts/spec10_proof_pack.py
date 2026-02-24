@@ -5,7 +5,6 @@ import hashlib
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -78,7 +77,7 @@ def main() -> int:
         )
 
     pack_rows: list[dict[str, Any]] = []
-    meta = {"k": "meta", "id": "spec10-proof-pack", "asof": "2026-02-23", "ts": int(time.time())}
+    meta = {"k": "meta", "id": "spec10-proof-pack", "asof": "2026-02-24"}
     pack_rows.append(meta)
 
     for row in rows:

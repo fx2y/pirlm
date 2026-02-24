@@ -130,3 +130,23 @@ run = "npm test"
 [tasks."ts-types"]
 description = "Check extension types with tsc"
 run = "npm run lint"
+
+[tasks."spec10-matrix"]
+description = "Spec10 C1 smoke: materialize authority command matrix"
+run = "python -m scripts.spec10_matrix"
+
+[tasks."spec10-proof"]
+description = "Spec10 C2 smoke: execute W0..W8 proof pack + parity checks"
+run = "python -m scripts.spec10_proof_pack && python -m scripts.replay_check && python -m scripts.artifact_rebuild --check"
+
+[tasks."spec10-incident"]
+description = "Spec10 C3 smoke: one-command incident bundle (trace->report)"
+run = "python -m scripts.spec10_incident --trace out/ci/trace.ndjson --out-dir out/spec10_incident"
+
+[tasks."spec10-surface"]
+description = "Spec10 C4 smoke: CLI surface resolver views"
+run = "python -m scripts.spec10_surface --help"
+
+[tasks."spec10-sales"]
+description = "Spec10 C5 smoke: persona packaging + sales scripts"
+run = "python -m scripts.spec10_sales_pack"
