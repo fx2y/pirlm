@@ -51,7 +51,7 @@ def _human_lines(summary: SummaryPayload) -> list[str]:
     return lines
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="pirml_run")
     parser.add_argument("--prog", required=True, help="Path to Python program")
     parser.add_argument("--out-dir", required=True, help="Output directory")
@@ -64,7 +64,7 @@ def main() -> None:
         help="Print concise operator summary instead of JSON envelope",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     try:
         res = run_once(

@@ -147,7 +147,14 @@ def run_incident(
     replay_final_sha = _sha256_path(replay_final) if replay_final.is_file() else ""
     replay_match = replay_match and source_final_sha == replay_final_sha
 
-    artifact_cmd = [sys.executable, "-m", "scripts.artifact_rebuild", "--check"]
+    artifact_cmd = [
+        sys.executable,
+        "-m",
+        "scripts.artifact_rebuild",
+        "--root",
+        str(trace_path.parent),
+        "--check",
+    ]
     artifact_proc = _run_command(artifact_cmd)
     artifact_parity = artifact_proc.returncode == 0
 
@@ -208,10 +215,10 @@ def run_incident(
     return IncidentResult(report=report, details=details)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     try:
-        args = strict_parse_args(parser)
+        args = strict_parse_args(parser, argv)
         result = run_incident(
             trace_path=Path(args.trace),
             out_dir=Path(args.out_dir),

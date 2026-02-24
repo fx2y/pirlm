@@ -28,7 +28,7 @@ class TestSpec10C5PackagingSync(unittest.TestCase):
                 {
                     "k": "row",
                     "lane": lane,
-                    "cmd": f"python -m scripts.lane_{lane.lower()}",
+                    "cmd": f"python -m scripts.pirml_run --lane {lane}",
                     "authority": True,
                 }
             )

@@ -20,7 +20,9 @@ from .protocol import (
 )
 from .tools import default_registry
 
-_PRODUCT_COMMANDS = frozenset({"doctor", "install-pi-ext", "uninstall-pi-ext", "replay", "tool"})
+_PRODUCT_COMMANDS = frozenset(
+    {"doctor", "install-pi-ext", "uninstall-pi-ext", "replay", "tool", "surface", "incident", "run"}
+)
 
 
 def build_legacy_parser() -> argparse.ArgumentParser:
@@ -164,6 +166,31 @@ def _cmd_tool(argv: list[str]) -> int:
     return run_tool_command(argv)
 
 
+def _cmd_surface(argv: list[str]) -> int:
+    # Delegate to scripts.spec10_surface.main
+    from scripts.spec10_surface import main as surface_main
+
+    return surface_main(argv)
+
+
+def _cmd_incident(argv: list[str]) -> int:
+    # Delegate to scripts.spec10_incident.main
+    from scripts.spec10_incident import main as incident_main
+
+    return incident_main(argv)
+
+
+def _cmd_run(argv: list[str]) -> int:
+    # Delegate to scripts.pirml_run.main
+    from scripts.pirml_run import main as run_main
+
+    try:
+        run_main(argv)
+        return 0
+    except SystemExit as exc:
+        return int(exc.code or 0)
+
+
 def _dispatch_product(cmd: str, argv: list[str]) -> int:
     if cmd == "doctor":
         return _cmd_doctor(argv)
@@ -175,6 +202,12 @@ def _dispatch_product(cmd: str, argv: list[str]) -> int:
         return _cmd_replay(argv)
     if cmd == "tool":
         return _cmd_tool(argv)
+    if cmd == "surface":
+        return _cmd_surface(argv)
+    if cmd == "incident":
+        return _cmd_incident(argv)
+    if cmd == "run":
+        return _cmd_run(argv)
     raise CliFailure("config", f"unknown command: {cmd}", 2, retryable=False)
 
 

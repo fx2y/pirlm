@@ -9,6 +9,20 @@ from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
 
 DEFAULT_MATRIX_PATH = Path("spec-0/10/21-command-matrix.jsonl")
 
+VALID_OWNERS = [
+    "scripts.pirml_run",
+    "scripts.compile",
+    "scripts.tools.replay",
+    "scripts.spec10_matrix",
+    "scripts.replay_check",
+    "scripts.spec10_incident",
+    "scripts.artifact_rebuild",
+    "scripts.web_fixture_smoke",
+    "scripts.spec09_tool_smoke",
+    "python -m pirml",
+    "mise run",
+]
+
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.is_file():
@@ -52,6 +66,13 @@ def _validate_rows(rows: list[dict[str, Any]], *, source: Path) -> None:
             if not cmd:
                 raise CliFailure(
                     "integrity", f"authority lane missing cmd: {lane}", 2, retryable=False
+                )
+            if not any(owner in cmd for owner in VALID_OWNERS):
+                raise CliFailure(
+                    "integrity",
+                    f"authority command must route through owner path: {cmd}",
+                    2,
+                    retryable=False,
                 )
             if lane in authority_lanes:
                 raise CliFailure(

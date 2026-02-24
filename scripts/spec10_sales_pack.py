@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
+from scripts.spec10_matrix import get_matrix_rows
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -365,7 +366,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = Path(args.out)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        matrix_rows = _read_jsonl(Path(args.matrix))
+        matrix_rows = get_matrix_rows(Path(args.matrix))
         pack_rows = _read_jsonl(Path(args.pack_index))
         verification_rows = _read_jsonl(Path(args.verification_matrix))
 

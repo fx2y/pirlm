@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from scripts.spec10_matrix import VALID_OWNERS
+
 
 class TestSpec10C1CommandMatrix(unittest.TestCase):
     MATRIX_PATH = "spec-0/10/21-command-matrix.jsonl"
@@ -135,20 +137,6 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
         """I05: authority runtime rows route through owner path only."""
         self.assertTrue(os.path.exists(self.MATRIX_PATH), f"missing matrix: {self.MATRIX_PATH}")
 
-        valid_owners = [
-            "scripts.pirml_run",
-            "scripts.compile",
-            "scripts.tools.replay",
-            "scripts.spec10_matrix",
-            "scripts.replay_check",
-            "scripts.spec10_incident",
-            "scripts.artifact_rebuild",
-            "scripts.web_fixture_smoke",
-            "scripts.spec09_tool_smoke",
-            "python -m pirml",
-            "mise run",
-        ]
-
         with open(self.MATRIX_PATH) as f:
             for line in f:
                 data = json.loads(line)
@@ -156,33 +144,26 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
                     cmd = data.get("cmd", "")
                     # Ensure it uses one of the valid owner entry points
                     self.assertTrue(
-                        any(owner in cmd for owner in valid_owners),
+                        any(owner in cmd for owner in VALID_OWNERS),
                         f"Authority command {cmd} must route through owner path",
                     )
 
     def test_direct_runtime_spawn_row_fails(self):
         """I05: Negative test for direct runtime spawn."""
-        rows = self._full_matrix_rows()
-        for row in rows:
-            if row.get("k") == "row" and row.get("lane") == "W0":
-                row["cmd"] = "python tests/prog_ok.py"
+        with TemporaryDirectory(prefix="spec10_c1_spawn_") as tmp:
+            matrix = Path(tmp) / "matrix.jsonl"
+            rows = self._full_matrix_rows()
+            for row in rows:
+                if row.get("k") == "row" and row.get("lane") == "W0":
+                    row["cmd"] = "python tests/prog_ok.py"
 
-        valid_owners = [
-            "scripts.pirml_run",
-            "scripts.compile",
-            "scripts.tools.replay",
-            "scripts.spec10_matrix",
-            "scripts.replay_check",
-            "scripts.spec10_incident",
-            "scripts.artifact_rebuild",
-            "scripts.web_fixture_smoke",
-            "scripts.spec09_tool_smoke",
-            "python -m pirml",
-            "mise run",
-        ]
-        bad_row = next(row for row in rows if row.get("k") == "row" and row.get("lane") == "W0")
-        cmd = str(bad_row["cmd"])
-        self.assertFalse(any(owner in cmd for owner in valid_owners))
+            self._write_matrix(matrix, rows)
+            cmd = ["python3", "-m", "scripts.spec10_matrix", "--matrix", str(matrix)]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            err = json.loads(result.stderr)
+            self.assertEqual(err["type"], "integrity")
+            self.assertIn("authority command must route through owner path", err["msg"])
 
 
 if __name__ == "__main__":
