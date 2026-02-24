@@ -29,7 +29,7 @@ class Spec10C6GateContractTests(unittest.TestCase):
             "spec10-proof",
             "spec10-incident",
             "spec10-surface",
-            "spec10-sales"
+            "spec10-sales",
         )
         assert_helper_tasks_additive_only(self.data, helpers=helpers)
         for h in helpers:
@@ -40,7 +40,7 @@ class Spec10C6GateContractTests(unittest.TestCase):
         self.assertTrue(self.matrix_path.exists())
         with open(self.matrix_path, encoding="utf-8") as f:
             lines = [json.loads(line) for line in f if line.strip()]
-        
+
         invariants = [inv for inv in lines if inv.get("k") == "inv"]
         self.assertGreater(len(invariants), 0)
 
@@ -71,7 +71,7 @@ class Spec10C6GateContractTests(unittest.TestCase):
         self.assertIn('registry.register("bash", tool_bash)', tools_py)
         # Ensure no other registrations in default_registry
         # This is a bit loose but works for basic check
-        
+
         # 2. Final Schema Check
         schema_path = Path("pirml/contracts/final.schema.json")
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -84,7 +84,7 @@ class Spec10C6GateContractTests(unittest.TestCase):
         # spec10-proof should run proofs including replay/artifact rebuild
         proof_task = tasks.get("spec10-proof", {})
         proof_run = str(proof_task.get("run", ""))
-        
+
         # spec10-incident should run replay/artifact parity
         incident_task = tasks.get("spec10-incident", {})
         incident_run = str(incident_task.get("run", ""))
@@ -93,16 +93,17 @@ class Spec10C6GateContractTests(unittest.TestCase):
         self.assertIn("python -m scripts.spec10_proof_pack", proof_run)
         self.assertIn("python -m scripts.replay_check", proof_run)
         self.assertIn("python -m scripts.artifact_rebuild --check", proof_run)
-        
+
         self.assertIn("python -m scripts.spec10_incident", incident_run)
 
     def test_spec10_outputs_x3_stable(self) -> None:
         """C6.T02: x3 determinism loops for proof-pack + incident."""
-        # This test actually performs the execution if requested, but for CI 
+        # This test actually performs the execution if requested, but for CI
         # it might just verify that the tasks exist and have the right flags.
         # However, the task description says "run x3 determinism loops".
         # In a unit test, we might just verify the command structure.
         pass
+
 
 if __name__ == "__main__":
     unittest.main()
