@@ -18,8 +18,12 @@ def _mk_trace(trace_path: Path, *, ok: bool = True, fail_tag: str = "") -> None:
         "op": "final",
         "id": "c00001",
         "seq": 1,
+        "dir": "in",
+        "ms": 1,
+        "ts": 1700000001,
         "ok": ok,
         "result": {"ok": ok, "results": []},
+        "sha256_output": "356564934c23925f484358ec5a2bfa98be95469fde0d36679e18ebc693a8ca16",
     }
     if fail_tag:
         frame["fail_tag"] = fail_tag
@@ -145,6 +149,7 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             self.assertEqual(ctx.exception.err_type, "integrity")
             report = json.loads((out_dir / "incident.json").read_text(encoding="utf-8"))
             self.assertEqual(report["class"], "REPLAY_MISMATCH")
+            self.assertEqual(report["rc"], 2)
 
     def test_report_shape_compact(self):
         with TemporaryDirectory(prefix="spec10_c3_shape_") as tmp:
@@ -211,8 +216,12 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
                 "op": "final",
                 "id": "c00001",
                 "seq": 1,
+                "dir": "in",
+                "ms": 1,
+                "ts": 1700000001,
                 "ok": True,
                 "result": {"ok": True, "results": [{"blob": heavy}]},
+                "sha256_output": "356564934c23925f484358ec5a2bfa98be95469fde0d36679e18ebc693a8ca16",
             }
             trace_path.write_text(json.dumps(frame) + "\n", encoding="utf-8")
             _mk_final(root / "final.json")
@@ -257,6 +266,29 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
 
             self.assertEqual(result.report["class"], "OUTPUT_INVALID")
             self.assertNotRegex(result.report["class"], r"[|,;]")
+
+    def test_strict_trace_validation_runs_pre_classification(self):
+        with TemporaryDirectory(prefix="spec10_c3_strict_trace_") as tmp:
+            root = Path(tmp)
+            trace_path = root / "trace.ndjson"
+            trace_path.write_text(
+                json.dumps(
+                    {"op": "bogus", "id": "c00001", "seq": 1, "ok": True, "result": {"ok": True}}
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            _mk_final(root / "final.json")
+            out_dir = root / "out"
+
+            with self.assertRaises(CliFailure) as ctx:
+                spec10_incident.run_incident(
+                    trace_path=trace_path,
+                    out_dir=out_dir,
+                    prog_path=Path("tests/prog_ok.py"),
+                    timeout_s=30.0,
+                )
+            self.assertEqual(ctx.exception.err_type, "integrity")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
-from pirml.protocol import ProtocolError, load_jsonl
+from pirml.protocol import ProtocolError, load_jsonl, validate_strict_trace
 from pirml.web.taxonomy import FAIL_TAGS, classify_fail_tag
 
 
@@ -113,6 +113,7 @@ def run_incident(
 
     try:
         frames = load_jsonl(trace_path)
+        validate_strict_trace(frames)
     except (OSError, ProtocolError, ValueError) as exc:
         raise CliFailure("integrity", f"trace load failed: {exc}", 2, retryable=False) from exc
     if not frames:
@@ -159,9 +160,15 @@ def run_incident(
         artifact_parity=artifact_parity,
     )
 
+    failure_reasons: list[str] = []
+    if not replay_match:
+        failure_reasons.append("replay parity mismatch")
+    if not artifact_parity:
+        failure_reasons.append("artifact parity check failed")
+
     report = {
         "class": class_name,
-        "rc": 0,
+        "rc": 2 if failure_reasons else 0,
         "replay_match": replay_match,
         "artifact_parity": artifact_parity,
         "trace_ptr": str(trace_path),
@@ -195,10 +202,8 @@ def run_incident(
 
     if len(str(report["notes"])) > 120:
         raise CliFailure("integrity", "incident hint exceeds 120 chars", 2, retryable=False)
-    if not replay_match:
-        raise CliFailure("integrity", "replay parity mismatch", 2, retryable=False)
-    if not artifact_parity:
-        raise CliFailure("integrity", "artifact parity check failed", 2, retryable=False)
+    if failure_reasons:
+        raise CliFailure("integrity", "; ".join(failure_reasons), 2, retryable=False)
 
     return IncidentResult(report=report, details=details)
 

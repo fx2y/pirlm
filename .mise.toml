@@ -149,4 +149,4 @@ run = "python -m scripts.spec10_surface --help"
 
 [tasks."spec10-sales"]
 description = "Spec10 C5 smoke: persona packaging + sales scripts"
-run = "python -m scripts.spec10_sales_pack"
+run = "python -m scripts.spec10_proof_pack --skip-run --out out/spec10_pack/index.jsonl && python -m scripts.spec10_sales_pack --out out/spec10_sales --pack-index out/spec10_pack/index.jsonl"

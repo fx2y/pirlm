@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from tests.mise_contract import (
     CI_RUN_EXPECTED,
@@ -98,11 +100,30 @@ class Spec10C6GateContractTests(unittest.TestCase):
 
     def test_spec10_outputs_x3_stable(self) -> None:
         """C6.T02: x3 determinism loops for proof-pack + incident."""
-        # This test actually performs the execution if requested, but for CI
-        # it might just verify that the tasks exist and have the right flags.
-        # However, the task description says "run x3 determinism loops".
-        # In a unit test, we might just verify the command structure.
-        pass
+        with TemporaryDirectory(prefix="spec10_c6_x3_") as tmp:
+            out_path = Path(tmp) / "index.jsonl"
+            snapshots: list[bytes] = []
+            for _ in range(3):
+                cmd = [
+                    "python3",
+                    "-m",
+                    "scripts.spec10_proof_pack",
+                    "--skip-run",
+                    "--out",
+                    str(out_path),
+                ]
+                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                self.assertEqual(res.returncode, 0, res.stderr)
+                snapshots.append(out_path.read_bytes())
+            self.assertEqual(snapshots[0], snapshots[1])
+            self.assertEqual(snapshots[1], snapshots[2])
+
+    def test_helper_tasks_callable(self) -> None:
+        """C6.B60: helper smoke tasks are executable, not string-only contracts."""
+        cmds = [["mise", "run", "spec10-matrix"], ["mise", "run", "spec10-sales"]]
+        for cmd in cmds:
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(res.returncode, 0, f"{' '.join(cmd)} failed: {res.stderr}")
 
 
 if __name__ == "__main__":

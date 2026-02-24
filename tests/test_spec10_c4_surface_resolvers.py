@@ -255,6 +255,20 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
             err = json.loads(res.stderr)
             self.assertEqual(err["type"], "integrity")
 
+    def test_policy_view_invalid_rc_scalar_typed(self):
+        with TemporaryDirectory(prefix="spec10_c4_policy_rc_bad_") as tmp:
+            policy_path = Path(tmp) / "policy.ndjson"
+            policy_path.write_text(
+                json.dumps({"type": "unsupported", "msg": "x", "rc": "oops"}) + "\n",
+                encoding="utf-8",
+            )
+            cmd = ["python3", "-m", "scripts.spec10_surface", "policy", "--log", str(policy_path)]
+            res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(res.returncode, 2)
+            self.assertNotIn("Traceback", res.stderr)
+            err = json.loads(res.stderr)
+            self.assertEqual(err["type"], "integrity")
+
     def test_runtime_stdout_contract_preserved(self):
         with TemporaryDirectory(prefix="spec10_c4_stdout_") as tmp:
             run_dir = Path(tmp) / "run"

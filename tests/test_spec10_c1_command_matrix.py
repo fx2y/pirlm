@@ -2,16 +2,36 @@ import json
 import os
 import subprocess
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 class TestSpec10C1CommandMatrix(unittest.TestCase):
     MATRIX_PATH = "spec-0/10/21-command-matrix.jsonl"
     SCRIPT_PATH = "scripts/spec10_matrix.py"
 
+    def _full_matrix_rows(self) -> list[dict[str, object]]:
+        rows: list[dict[str, object]] = [{"k": "meta", "id": "spec10-matrix"}]
+        for idx in range(11):
+            rows.append(
+                {
+                    "k": "row",
+                    "lane": f"W{idx}",
+                    "cmd": "python -m scripts.pirml_run --prog tests/prog_ok.py --out-dir out/spec10_c1",
+                    "authority": True,
+                }
+            )
+        return rows
+
+    def _write_matrix(self, path: Path, rows: list[dict[str, object]]) -> None:
+        path.write_text(
+            "".join(json.dumps(row, sort_keys=True, separators=(",", ":")) + "\n" for row in rows),
+            encoding="utf-8",
+        )
+
     def test_each_w_lane_has_single_authority_command(self):
         """I02: W-matrix has exactly one authority command per W0..W10 lane."""
-        if not os.path.exists(self.MATRIX_PATH):
-            self.skipTest(f"{self.MATRIX_PATH} not materialized yet")
+        self.assertTrue(os.path.exists(self.MATRIX_PATH), f"missing matrix: {self.MATRIX_PATH}")
 
         lanes: dict[str, str] = {}
         with open(self.MATRIX_PATH) as f:
@@ -30,13 +50,28 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
     def test_duplicate_authority_rows_fail(self):
         """I02: Negative test for duplicate authority rows."""
-        # This is enforced by test_each_w_lane_has_single_authority_command.
-        pass
+        with TemporaryDirectory(prefix="spec10_c1_dupe_") as tmp:
+            matrix = Path(tmp) / "matrix.jsonl"
+            rows = self._full_matrix_rows()
+            rows.append(
+                {
+                    "k": "row",
+                    "lane": "W0",
+                    "cmd": "python -m scripts.spec10_matrix",
+                    "authority": True,
+                }
+            )
+            self._write_matrix(matrix, rows)
+            cmd = ["python3", "-m", "scripts.spec10_matrix", "--matrix", str(matrix)]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            err = json.loads(result.stderr)
+            self.assertEqual(err["type"], "integrity")
+            self.assertIn("duplicate authority lane", err["msg"])
 
     def test_alias_rows_non_authority(self):
         """I03: alias rows are explicit and non-authoritative."""
-        if not os.path.exists(self.MATRIX_PATH):
-            self.skipTest(f"{self.MATRIX_PATH} not materialized yet")
+        self.assertTrue(os.path.exists(self.MATRIX_PATH), f"missing matrix: {self.MATRIX_PATH}")
 
         with open(self.MATRIX_PATH) as f:
             for line in f:
@@ -53,13 +88,21 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
     def test_alias_without_authority_fails(self):
         """I03: Negative test for alias without authority ref."""
-        # Enforced by test_alias_rows_non_authority.
-        pass
+        with TemporaryDirectory(prefix="spec10_c1_alias_") as tmp:
+            matrix = Path(tmp) / "matrix.jsonl"
+            rows = self._full_matrix_rows()
+            rows.append({"k": "alias", "alias": "bad", "ref": "W99", "authority": False})
+            self._write_matrix(matrix, rows)
+            cmd = ["python3", "-m", "scripts.spec10_matrix", "--matrix", str(matrix)]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            err = json.loads(result.stderr)
+            self.assertEqual(err["type"], "integrity")
+            self.assertIn("alias ref missing lane", err["msg"])
 
     def test_matrix_cli_typed_fail_lanes(self):
         """I04: C1 matrix CLI typed fail lanes for invalid lanes."""
-        if not os.path.exists(self.SCRIPT_PATH):
-            self.skipTest(f"{self.SCRIPT_PATH} not implemented yet")
+        self.assertTrue(os.path.exists(self.SCRIPT_PATH), f"missing script: {self.SCRIPT_PATH}")
 
         # Use an invalid lane
         cmd = ["python3", "-m", "scripts.spec10_matrix", "--lane", "W99"]
@@ -76,8 +119,7 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
     def test_parse_fail_typed_no_usage(self):
         """I04: Verify no `usage:` leakage in stderr on parse failure."""
-        if not os.path.exists(self.SCRIPT_PATH):
-            self.skipTest(f"{self.SCRIPT_PATH} not implemented yet")
+        self.assertTrue(os.path.exists(self.SCRIPT_PATH), f"missing script: {self.SCRIPT_PATH}")
 
         cmd = ["python3", "-m", "scripts.spec10_matrix", "--invalid-flag"]
         result = subprocess.run(cmd, capture_output=True, text=True)
@@ -91,8 +133,7 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
     def test_owner_path_only(self):
         """I05: authority runtime rows route through owner path only."""
-        if not os.path.exists(self.MATRIX_PATH):
-            self.skipTest(f"{self.MATRIX_PATH} not materialized yet")
+        self.assertTrue(os.path.exists(self.MATRIX_PATH), f"missing matrix: {self.MATRIX_PATH}")
 
         valid_owners = [
             "scripts.pirml_run",
@@ -121,8 +162,27 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
     def test_direct_runtime_spawn_row_fails(self):
         """I05: Negative test for direct runtime spawn."""
-        # Enforced by test_owner_path_only.
-        pass
+        rows = self._full_matrix_rows()
+        for row in rows:
+            if row.get("k") == "row" and row.get("lane") == "W0":
+                row["cmd"] = "python tests/prog_ok.py"
+
+        valid_owners = [
+            "scripts.pirml_run",
+            "scripts.compile",
+            "scripts.tools.replay",
+            "scripts.spec10_matrix",
+            "scripts.replay_check",
+            "scripts.spec10_incident",
+            "scripts.artifact_rebuild",
+            "scripts.web_fixture_smoke",
+            "scripts.spec09_tool_smoke",
+            "python -m pirml",
+            "mise run",
+        ]
+        bad_row = next(row for row in rows if row.get("k") == "row" and row.get("lane") == "W0")
+        cmd = str(bad_row["cmd"])
+        self.assertFalse(any(owner in cmd for owner in valid_owners))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,9 @@
+<<<PROG>>>
+import asyncio
+from pirml.runtime.rpc import send_final
+async def main():
+    send_final(True, {"ok": True, "results": []})
+if __name__ == "__main__":
+    asyncio.run(main())
+<<<CONTRACT>>>
+{"tool_deps":[],"io_schema":{"trace_ptr":"trace.ndjson","final_schema":{},"citations_schema":{}},"budgets":{"max_calls":1,"max_parallel":1,"max_bytes_in":128,"max_bytes_out":128,"timeout_s":5},"assertions":[]}

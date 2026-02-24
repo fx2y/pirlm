@@ -177,11 +177,28 @@ def _load_artifact_pointers(
                 break
         if pointer:
             pointers[lane] = pointer
-            continue
-        # Some lanes (e.g. pure gate/policy rows) may not emit lane-local final/trace pointers.
-        # Fallback to the canonical proof-pack index artifact so claim->evidence stays resolvable.
-        pointers[lane] = str(pack_index_path)
     return pointers
+
+
+def _resolve_pointer(pointer: str, *, pack_index_path: Path) -> str:
+    raw = pointer.strip()
+    if not raw:
+        raise CliFailure("validation", "empty proof pointer", 1, retryable=False)
+
+    candidates = [Path(raw)]
+    if not Path(raw).is_absolute():
+        candidates.append(pack_index_path.parent / raw)
+        candidates.append(Path.cwd() / raw)
+
+    checked: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in checked:
+            continue
+        checked.add(resolved)
+        if resolved.is_file():
+            return str(resolved)
+    raise CliFailure("validation", f"unresolved proof pointer: {raw}", 1, retryable=False)
 
 
 def _verification_index(verification_rows: list[dict[str, Any]]) -> set[str]:
@@ -233,11 +250,7 @@ def build_persona_pack(
                     raise CliFailure(
                         "validation", f"missing proof pointer for lane: {lane}", 1, retryable=False
                     )
-            artifact_ptr = str(pointers[lane])
-            if not artifact_ptr.strip():
-                raise CliFailure(
-                    "validation", f"empty proof pointer for lane: {lane}", 1, retryable=False
-                )
+            artifact_ptr = _resolve_pointer(str(pointers[lane]), pack_index_path=pack_index_path)
 
             persona_rows.append(
                 {

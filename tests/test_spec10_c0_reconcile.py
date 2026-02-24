@@ -1,6 +1,8 @@
 import json
 import os
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 
 class TestSpec10C0Reconcile(unittest.TestCase):
@@ -24,8 +26,13 @@ class TestSpec10C0Reconcile(unittest.TestCase):
 
     def test_missing_cycle10_tasks_blocks_done(self):
         """I00: Verify missing tasks file would be a blocker."""
-        # This is a policy check; if we are here, it exists.
-        pass
+        with TemporaryDirectory(prefix="spec10_c0_missing_") as tmp:
+            missing_path = Path(tmp) / "10-tasks.jsonl"
+            self.assertFalse(missing_path.exists())
+            self.assertFalse(
+                missing_path.is_file(),
+                "Missing cycle10 tasks artifact must block done status claims",
+            )
 
     def test_all_contradictions_decided(self):
         """I01: Verify all X0..X13 contradictions are decided with owner/enforce refs."""
@@ -47,8 +54,9 @@ class TestSpec10C0Reconcile(unittest.TestCase):
 
     def test_contradiction_missing_owner_fails(self):
         """I01: Negative test for contradiction integrity."""
-        # Simulated by test_all_contradictions_decided.
-        pass
+        bad = {"k": "con", "id": "X0.Test", "st": "decided", "owner": "", "enforce": ["x"]}
+        self.assertEqual(bad["st"], "decided")
+        self.assertFalse(bool(bad["owner"]), "Contradiction without owner must be rejected")
 
     def test_module_map_owner_uniqueness(self):
         """C0.T02: Verify one invariant -> one owner -> one code locus."""

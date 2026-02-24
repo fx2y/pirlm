@@ -2,168 +2,119 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from typing import Any
+from pathlib import Path
+from typing import Any, cast
 
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
 
+DEFAULT_MATRIX_PATH = Path("spec-0/10/21-command-matrix.jsonl")
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    if not path.is_file():
+        raise CliFailure("config", f"missing matrix artifact: {path}", 2, retryable=False)
+    rows: list[dict[str, Any]] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise CliFailure(
+                "integrity", f"invalid jsonl row: {path}:{lineno}: {exc}", 2, retryable=False
+            ) from exc
+        if not isinstance(payload, dict):
+            raise CliFailure(
+                "integrity", f"jsonl row must be object: {path}:{lineno}", 2, retryable=False
+            )
+        raw = cast(dict[object, Any], payload)
+        rows.append({str(k): v for k, v in raw.items()})
+    return rows
+
+
+def _validate_rows(rows: list[dict[str, Any]], *, source: Path) -> None:
+    if not rows:
+        raise CliFailure("integrity", f"empty matrix: {source}", 2, retryable=False)
+    if rows[0].get("k") != "meta":
+        raise CliFailure("integrity", f"missing meta first row: {source}", 2, retryable=False)
+
+    authority_lanes: dict[str, str] = {}
+    alias_refs: list[str] = []
+    for row in rows:
+        kind = str(row.get("k", ""))
+        if kind == "row" and bool(row.get("authority", False)):
+            lane = str(row.get("lane", "")).strip()
+            cmd = str(row.get("cmd", "")).strip()
+            if not lane:
+                raise CliFailure(
+                    "integrity", f"authority lane missing id: {source}", 2, retryable=False
+                )
+            if not cmd:
+                raise CliFailure(
+                    "integrity", f"authority lane missing cmd: {lane}", 2, retryable=False
+                )
+            if lane in authority_lanes:
+                raise CliFailure(
+                    "integrity", f"duplicate authority lane: {lane}", 2, retryable=False
+                )
+            authority_lanes[lane] = cmd
+            continue
+        if kind == "alias":
+            if bool(row.get("authority", False)):
+                alias = str(row.get("alias", "<unknown>"))
+                raise CliFailure(
+                    "integrity", f"alias row cannot be authority: {alias}", 2, retryable=False
+                )
+            alias_refs.append(str(row.get("ref", "")).strip())
+
+    required_lanes = {f"W{i}" for i in range(11)}
+    missing = sorted(required_lanes.difference(authority_lanes.keys()))
+    if missing:
+        raise CliFailure(
+            "integrity", f"missing authority lanes: {','.join(missing)}", 2, retryable=False
+        )
+    for ref in alias_refs:
+        if ref and ref not in authority_lanes:
+            raise CliFailure("integrity", f"alias ref missing lane: {ref}", 2, retryable=False)
+
+
+def get_matrix_rows(matrix_path: Path | None = None) -> list[dict[str, Any]]:
+    path = matrix_path or DEFAULT_MATRIX_PATH
+    rows = _read_jsonl(path)
+    _validate_rows(rows, source=path)
+    return rows
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Spec-10 command matrix resolver")
+    parser.add_argument("--lane", type=str, help="Filter by lane (W0..W10)")
+    parser.add_argument(
+        "--matrix", default=str(DEFAULT_MATRIX_PATH), help="Matrix JSONL artifact path"
+    )
+    parser.add_argument("--format", choices=["jsonl"], default="jsonl", help="Output format")
+    return parser
+
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Spec-10 Command Matrix Resolver")
-    parser.add_argument("--lane", type=str, help="Filter by lane (W0..W10)")
-    parser.add_argument("--format", choices=["jsonl"], default="jsonl", help="Output format")
-
+    parser = _build_parser()
     try:
         args = strict_parse_args(parser)
+        rows = get_matrix_rows(Path(args.matrix))
+        lane_filter = str(args.lane).strip() if args.lane else ""
+        if lane_filter:
+            valid_lanes = {
+                str(row["lane"]) for row in rows if row.get("k") == "row" and "lane" in row
+            }
+            if lane_filter not in valid_lanes:
+                raise CliFailure("config", f"unknown lane: {lane_filter}", 2, retryable=False)
+            rows = [row for row in rows if row.get("lane") == lane_filter or row.get("k") == "meta"]
     except CliFailure as err:
         return emit_failure(err)
 
-    rows = get_matrix_rows()
-
-    if args.lane:
-        valid_lanes = {row["lane"] for row in rows if "lane" in row}
-        if args.lane not in valid_lanes:
-            return emit_failure(CliFailure("config", f"unknown lane: {args.lane}", 2))
-        rows = [row for row in rows if row.get("lane") == args.lane]
-
     for row in rows:
-        print(json.dumps(row))
-
+        print(json.dumps(row, sort_keys=True, separators=(",", ":")))
     return 0
 
 
-def get_matrix_rows() -> list[dict[str, Any]]:
-    # Source: spec-0/10-spec.md section 3
-    return [
-        {"k": "meta", "id": "spec10-matrix", "asof": "2026-02-23"},
-        # W0
-        {
-            "k": "row",
-            "lane": "W0",
-            "name": "Sales proof burst",
-            "cmd": "mise run fast && python -m scripts.pirml_run --prog tests/prog_ok.py --out-dir out/demo --project-root .",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W1
-        {
-            "k": "row",
-            "lane": "W1",
-            "name": "J1/J2 Trust + runtime integrity signoff",
-            "cmd": "python -m scripts.pirml_run --prog tests/prog_ok.py --out-dir out/w1/live && python -m scripts.tools.replay tests/prog_ok.py out/w1/live/trace.ndjson --out-dir out/w1/replay",
-            "authority": True,
-            "deps": ["W0"],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W2
-        {
-            "k": "row",
-            "lane": "W2",
-            "name": "J3/J5 Tool authoring + context compression",
-            "cmd": "rm -rf out/w2/tools && python -m pirml tool init acme.lookup --tools-dir out/w2/tools",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W3
-        {
-            "k": "row",
-            "lane": "W3",
-            "name": "J4 Compile safety loop",
-            "cmd": "python -m scripts.compile --task 'echo alpha' --tools-dir tests/fixtures/toolsearch/catalog --out-dir out/w3/compile",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W4
-        {
-            "k": "row",
-            "lane": "W4",
-            "name": "J6 Web evidence lane",
-            "cmd": "python -m scripts.web_fixture_smoke",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W5
-        {
-            "k": "row",
-            "lane": "W5",
-            "name": "J7 ArtifactFS + RLM lane",
-            "cmd": "python -m scripts.artifact_rebuild --check",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W6
-        {
-            "k": "row",
-            "lane": "W6",
-            "name": "J8 Operator UX lane",
-            "cmd": "python -m scripts.pirml_run --prog tests/prog_ok.py --out-dir out/w6",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W7
-        {
-            "k": "row",
-            "lane": "W7",
-            "name": "J9 Eval/report economics lane",
-            "cmd": "mise run eval-golden && mise run eval-full && mise run eval-report",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W8
-        {
-            "k": "row",
-            "lane": "W8",
-            "name": "J10 Policy shell lane",
-            "cmd": "python -m scripts.spec09_tool_smoke",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W9
-        {
-            "k": "row",
-            "lane": "W9",
-            "name": "J11 Incident triage lane",
-            "cmd": "python -m scripts.spec10_incident --trace out/ci/trace.ndjson --out-dir out/spec10_incident",
-            "authority": True,
-            "deps": [],
-            "deterministic": True,
-            "optional": False,
-        },
-        # W10
-        {
-            "k": "row",
-            "lane": "W10",
-            "name": "J12 Governance lane",
-            "cmd": "mise run ci",
-            "authority": True,
-            "deps": ["W0", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9"],
-            "deterministic": True,
-            "optional": False,
-        },
-        # Aliases (I03)
-        {"k": "alias", "alias": "pirml_run", "ref": "W6", "authority": False, "risk": "low"},
-        {"k": "alias", "alias": "pirml-replay", "ref": "W0", "authority": False, "risk": "low"},
-        {"k": "alias", "alias": "mise ci", "ref": "W10", "authority": False, "risk": "low"},
-        {"k": "alias", "alias": "python -m pirml", "ref": "W1", "authority": False, "risk": "high"},
-    ]
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

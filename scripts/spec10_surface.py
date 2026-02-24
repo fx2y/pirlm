@@ -214,6 +214,19 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
                 raw_parsed = cast(dict[object, Any], parsed)
                 rows.append({str(key): value for key, value in raw_parsed.items()})
 
+    def _coerce_rc(value: Any, *, context: str, default: int) -> int:
+        if value is None:
+            return default
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise CliFailure(
+                "integrity",
+                f"invalid rc scalar in {context}: {value!r}",
+                2,
+                retryable=False,
+            ) from exc
+
     typed_rows: list[dict[str, Any]] = []
     for row in rows:
         if "error" in row and isinstance(row.get("error"), dict):
@@ -223,7 +236,7 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
                     "type": err.get("type"),
                     "msg": err.get("msg"),
                     "retryable": bool(err.get("retryable", False)),
-                    "rc": int(err.get("rc", 1) or 1),
+                    "rc": _coerce_rc(err.get("rc", 1), context="policy.error", default=1),
                     "decision": "deny",
                 }
             )
@@ -234,7 +247,7 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
                     "type": row.get("type"),
                     "msg": row.get("msg"),
                     "retryable": bool(row.get("retryable", False)),
-                    "rc": int(row.get("rc", 1) or 1),
+                    "rc": _coerce_rc(row.get("rc", 1), context="policy.typed", default=1),
                     "decision": row.get("decision", "deny"),
                 }
             )
@@ -245,7 +258,7 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
                     "type": row.get("type", "policy_decision"),
                     "msg": row.get("msg", ""),
                     "retryable": bool(row.get("retryable", False)),
-                    "rc": int(row.get("rc", 0) or 0),
+                    "rc": _coerce_rc(row.get("rc", 0), context="policy.decision", default=0),
                     "decision": row.get("decision"),
                 }
             )
