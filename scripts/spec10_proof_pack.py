@@ -12,20 +12,20 @@ from typing import Any, cast
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
 from scripts.spec10_matrix import DEFAULT_MATRIX_PATH, get_matrix_rows
 
-_REQUIRED_LANES = tuple(f"W{i}" for i in range(9))
+_REQUIRED_LANES = tuple(f"W{i}" for i in range(11))
 
 _LANE_POINTER_CANDIDATES: dict[str, tuple[tuple[str, str], ...]] = {
     "W0": (("trace_ptr", "out/demo/trace.ndjson"), ("final_ptr", "out/demo/final.json")),
     "W1": (
         ("trace_ptr", "out/w1/live/trace.ndjson"),
         ("final_ptr", "out/w1/live/final.json"),
-        ("details_ptr", "out/w1/replay/final.json"),
+        ("artifact_ptr", "out/w1/replay/final.json"),
     ),
-    "W2": (("details_ptr", "out/w2/tools/acme.lookup.json"),),
+    "W2": (("artifact_ptr", "out/w2/tools/acme.lookup.json"),),
     "W3": (
-        ("details_ptr", "out/w3/compile/prog.py"),
-        ("details_ptr", "out/w3/compile/contract.json"),
-        ("details_ptr", "out/w3/compile/compile_error.json"),
+        ("artifact_ptr", "out/w3/compile/prog.py"),
+        ("artifact_ptr", "out/w3/compile/contract.json"),
+        ("artifact_ptr", "out/w3/compile/compile_error.json"),
     ),
     "W4": (
         ("report_ptr", "out/web_smoke/web_output.json"),
@@ -36,6 +36,11 @@ _LANE_POINTER_CANDIDATES: dict[str, tuple[tuple[str, str], ...]] = {
     "W6": (("trace_ptr", "out/w6/trace.ndjson"), ("final_ptr", "out/w6/final.json")),
     "W7": (("report_ptr", "out/eval/full/report.json"),),
     "W8": (("trace_ptr", "out/ci/trace.ndjson"), ("final_ptr", "out/ci/final.json")),
+    "W9": (
+        ("report_ptr", "out/spec10_incident/incident.json"),
+        ("details_ptr", "out/spec10_incident/incident.details.json"),
+    ),
+    "W10": (("trace_ptr", "out/ci/trace.ndjson"), ("final_ptr", "out/ci/final.json")),
     "W4b": (("report_ptr", "out/web_smoke/web_output.json"),),
 }
 
@@ -314,6 +319,7 @@ def main() -> int:
             pointer_fields.get("final_ptr")
             or pointer_fields.get("report_ptr")
             or pointer_fields.get("trace_ptr")
+            or pointer_fields.get("artifact_ptr")
             or pointer_fields["details_ptr"]
         )
         pack_row: dict[str, Any] = {

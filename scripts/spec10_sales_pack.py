@@ -86,7 +86,7 @@ BUYER_PLANS: tuple[BuyerPlan, ...] = (
         objection="Not another eval dashboard",
         objection_kill="Show owner path + typed fail lanes.",
         invariants=("I05", "I18"),
-        proof_lanes=("W0", "W1"),
+        proof_lanes=("W0", "W1", "W6"),
     ),
     BuyerPlan(
         buyer="Security/Policy",
@@ -102,7 +102,7 @@ BUYER_PLANS: tuple[BuyerPlan, ...] = (
         objection="Flaky",
         objection_kill="Show replay block + deterministic rerun lanes.",
         invariants=("I15", "I22"),
-        proof_lanes=("W1", "W3"),
+        proof_lanes=("W1", "W3", "W2"),
     ),
     BuyerPlan(
         buyer="PM/ML lead",
@@ -120,9 +120,17 @@ BUYER_PLANS: tuple[BuyerPlan, ...] = (
         invariants=("I12", "I10"),
         proof_lanes=("W9", "W5"),
     ),
+    BuyerPlan(
+        buyer="Eng leadership",
+        hook="Capability growth stays coherent via governance invariants.",
+        objection="Governance is slow",
+        objection_kill="Show invariant+test+ledger coupling in CI gate.",
+        invariants=("I20", "I21", "I24"),
+        proof_lanes=("W10", "W0"),
+    ),
 )
 
-PRIORITY_LANES: tuple[str, ...] = ("W0", "W1", "W8", "W9")
+PRIORITY_LANES: tuple[str, ...] = ("W0", "W1", "W8", "W9", "W10")
 
 HARD_DISQUALIFIERS: tuple[str, ...] = (
     "Wants permissive fallback behavior for unknown flags/providers/tools.",
@@ -131,9 +139,7 @@ HARD_DISQUALIFIERS: tuple[str, ...] = (
     "Rejects explicit dataset/path ingress discipline.",
 )
 
-LANE_POINTER_FALLBACKS: dict[str, str] = {
-    "W9": "out/spec10_incident/incident.json",
-}
+LANE_POINTER_FALLBACKS: dict[str, str] = {}
 
 
 def _load_authority_commands(matrix_rows: list[dict[str, Any]]) -> dict[str, str]:
@@ -166,6 +172,7 @@ def _load_artifact_pointers(
         if not lane:
             continue
         pointer_candidates = [
+            row.get("artifact_ptr"),
             row.get("final_ptr"),
             row.get("trace_ptr"),
             row.get("report_ptr"),

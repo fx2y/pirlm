@@ -136,7 +136,7 @@ description = "Spec10 C1 smoke: materialize authority command matrix"
 run = "python -m scripts.spec10_matrix"
 
 [tasks."spec10-proof"]
-description = "Spec10 C2 smoke: execute W0..W8 proof pack + parity checks"
+description = "Spec10 C2 smoke: execute W0..W10 proof pack + parity checks"
 run = "python -m scripts.spec10_proof_pack && python -m scripts.replay_check && python -m scripts.artifact_rebuild --check"
 
 [tasks."spec10-incident"]

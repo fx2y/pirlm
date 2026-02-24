@@ -44,7 +44,7 @@ class TestSpec10C5PackagingSync(unittest.TestCase):
         return rows
 
     def _fixture_verification_rows(self) -> list[dict[str, object]]:
-        ids = ["I05", "I10", "I12", "I15", "I16", "I17", "I18", "I19", "I20", "I22"]
+        ids = ["I05", "I10", "I12", "I15", "I16", "I17", "I18", "I19", "I20", "I21", "I22", "I24"]
         return [{"k": "inv", "id": inv} for inv in ids]
 
     def test_every_claim_maps_to_proof_row(self) -> None:
@@ -116,10 +116,11 @@ class TestSpec10C5PackagingSync(unittest.TestCase):
                 pack_index_path=root / "pack.jsonl",
             )
             persona_refs = [row["proof_ref"] for row in rows if row.get("k") == "persona"]
-            first_pos = {lane: persona_refs.index(lane) for lane in ("W0", "W1", "W8", "W9")}
+            first_pos = {lane: persona_refs.index(lane) for lane in ("W0", "W1", "W8", "W9", "W10")}
             self.assertLess(first_pos["W0"], first_pos["W1"])
             self.assertLess(first_pos["W1"], first_pos["W8"])
             self.assertLess(first_pos["W8"], first_pos["W9"])
+            self.assertLess(first_pos["W9"], first_pos["W10"])
 
     def test_objection_rows_reference_invariants(self) -> None:
         with TemporaryDirectory(prefix="spec10_c5_objection_") as tmp:
@@ -131,7 +132,7 @@ class TestSpec10C5PackagingSync(unittest.TestCase):
                 pack_index_path=root / "pack.jsonl",
             )
             objections = [row for row in rows if row.get("k") == "objection"]
-            self.assertEqual(len(objections), 5)
+            self.assertEqual(len(objections), 6)
             for row in objections:
                 inv = row.get("invariants")
                 self.assertIsInstance(inv, list)

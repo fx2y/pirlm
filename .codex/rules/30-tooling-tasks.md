@@ -17,14 +17,14 @@ paths:
 - `G3` Script entry style is module-only: `python -m scripts.*`.
 - `G4` Tool/runtime/version pins are policy (determinism + supply-chain), not convenience.
 - `G5` Dependency admission bar: measurable correctness/determinism/perf gain > maintenance/risk cost.
-- `G6` Gate/task edits must prove value in same merge via `mise run fast` + `mise run ci` (+ replay/schema proof if boundary changed).
+- `G6` Gate/task edits prove value in same merge via `mise run fast` + `mise run ci` (+ replay/schema proof if boundary changed).
 - `G7` Gating consumes explicit artifacts (`out/<run>/...`), never hidden process state.
-- `G8` Ingress explicit-only: schema/report/artifact lint commands need explicit args; missing declared artifact hard-fails; recursive scans forbidden.
+- `G8` Ingress explicit-only: lint/report/artifact commands require explicit args; recursive scans forbidden.
 
 ## G9-G17 Runtime/Wrapper Governance
 - `G9` Emitted pointers (`trace_ptr`, artifact/view refs, projection refs) must resolve and pass schema/frame checks.
 - `G10` Eval harness executes every declared row or emits typed unsupported; no silent skip/fallback.
-- `G11` CI authority uses canonical compact bytes only; human summaries are non-authoritative.
+- `G11` CI authority consumes canonical compact bytes only; human summaries are non-authoritative.
 - `G12` Exit-code law across wrappers/runners: `0 success`, `1 biz/unsupported/tool/validation`, `2 integrity/config/internal`.
 - `G13` Fail lanes emit typed JSON stderr envelopes (`type,msg,retryable`).
 - `G14` UX wrappers/extensions/toolpack delegate to one execution owner path; no alternate runtime path.
@@ -36,10 +36,21 @@ paths:
 - `G18` Status authority is current-cycle `spec-0/*-tasks.jsonl`; other ledgers are support only.
 - `G19` Behavior deltas co-update `spec-0/00-learnings.jsonl`, current `spec-0/*-tasks.jsonl`, current `spec-0/*-tutorial.jsonl` in same merge.
 - `G20` `done` only when live locus exists, named tests exist, contradictions resolved (`owner+enforce`), matrix refs resolve, proof cmds rerun clean.
-- `G21` Matrix owner/test refs must resolve in-repo (real or typed-placeholder suites); unresolved refs block done.
-- `G22` In-repo fixture helpers are labeled smoke; non-fixture benchmarks need explicit dataset override in commands/docs.
+- `G21` Matrix owner/test refs must resolve in-repo (real or typed-placeholder suites); unresolved refs block `done`.
+- `G22` In-repo fixture helpers are labeled smoke; non-fixture benchmarks need explicit dataset override.
 - `G23` Report commands consume suite-scoped shard logs via explicit args; flat/implicit patterns invalid.
 - `G24` Setup commands (e.g., `mise run boot`) must be idempotent on provisioned workspaces.
 - `G25` Release-ready minimum proof set: `mise run fast`, `mise run ci`, replay check, artifact rebuild check, relevant cycle smoke/parity suites.
-- `G26` If any authority proof later fails, flip impacted cycle/task from done to active before new claims.
-- `G27` Any new `op|tool|gate|schema|runtime|cli-surface` needs invariant delta + failing test + synced handoff ledgers/docs.
+- `G26` If any authority proof later fails, flip impacted cycle/task from `done` to active before new claims.
+- `G27` New `op|tool|gate|schema|runtime|cli-surface` needs invariant delta + failing test + synced handoff ledgers/docs.
+
+## G28-G36 Productized Operator Surface
+- `G28` Command matrix is single source of authority rows; rows must use validated owner paths; aliases are explicit non-authority hints.
+- `G29` Proof-pack orchestrators execute required canonical lanes and emit deterministic index rows with `lane|rc|sha256|pointer refs`.
+- `G30` Proof-pack success rows require resolvable pointers; unresolved pointer is integrity-fail (`rc=2`).
+- `G31` Incident authority command uses fixed chain `trace->classify->replay(blocked-tools)->artifact-parity`; mismatch/corruption typed integrity-fails.
+- `G32` Incident payload split fixed: compact root report + details sidecar; root hint text stays one line `<=120`.
+- `G33` Resolver commands are read-only artifact projections (`console|evidence|eval|policy`-class views); no hidden state writes.
+- `G34` Policy-log ingest accepts strict `json|ndjson` only; invalid scalar/shape typed-fails.
+- `G35` Claim-pack outputs are machine claims only (`buyer,hook,proof_ref,proof_cmd,artifact_ptr,objection_kill`); missing bind/pointer typed-fails.
+- `G36` Operator/docs snippets are executable authority drills: shell-valid syntax, explicit ingress args, and owner-path command forms.

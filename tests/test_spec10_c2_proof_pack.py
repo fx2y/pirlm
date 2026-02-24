@@ -90,7 +90,7 @@ class TestSpec10C2ProofPack(unittest.TestCase):
                 if line.strip()
             ]
             lanes = [row["lane"] for row in rows if row.get("k") == "row"]
-            self.assertEqual(lanes, [f"W{i}" for i in range(9)])
+            self.assertEqual(lanes, [f"W{i}" for i in range(11)])
 
     def test_pack_pointer_resolve(self) -> None:
         with TemporaryDirectory(prefix="spec10_c2_ptr_") as tmp:
@@ -108,7 +108,7 @@ class TestSpec10C2ProofPack(unittest.TestCase):
                 if line.strip()
             ]
             lane_rows = [row for row in rows if row.get("k") == "row"]
-            self.assertEqual(len(lane_rows), 9)
+            self.assertEqual(len(lane_rows), 11)
             for row in lane_rows:
                 self.assertIn("details_ptr", row)
                 pointer = Path(str(row["details_ptr"]))
