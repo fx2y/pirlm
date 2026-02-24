@@ -4,7 +4,7 @@ import argparse
 import json
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
 from pirml.protocol import ProtocolError, load_jsonl, validate_strict_trace
@@ -15,7 +15,9 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="surface", required=True)
 
     console = subparsers.add_parser("console", help="S1 command console view")
-    console.add_argument("--run", default="out/ci", help="Run directory containing trace/final artifacts")
+    console.add_argument(
+        "--run", default="out/ci", help="Run directory containing trace/final artifacts"
+    )
 
     evidence = subparsers.add_parser("evidence", help="S2 evidence timeline view")
     evidence.add_argument("--trace", required=True, help="Trace NDJSON path")
@@ -40,7 +42,8 @@ def _read_json(path: Path) -> dict[str, Any]:
         raise CliFailure("integrity", f"invalid json: {path}: {exc}", 2, retryable=False) from exc
     if not isinstance(payload, dict):
         raise CliFailure("integrity", f"json root must be object: {path}", 2, retryable=False)
-    return dict(payload)
+    raw_payload = cast(dict[object, Any], payload)
+    return {str(key): value for key, value in raw_payload.items()}
 
 
 def _load_trace(path: Path) -> list[dict[str, Any]]:
@@ -50,7 +53,9 @@ def _load_trace(path: Path) -> list[dict[str, Any]]:
         frames = load_jsonl(path)
         validate_strict_trace(frames)
     except (OSError, ProtocolError, ValueError) as exc:
-        raise CliFailure("integrity", f"strict trace validation failed: {exc}", 2, retryable=False) from exc
+        raise CliFailure(
+            "integrity", f"strict trace validation failed: {exc}", 2, retryable=False
+        ) from exc
     if not frames:
         raise CliFailure("integrity", f"empty trace: {path}", 2, retryable=False)
     return [dict(frame) for frame in frames]
@@ -73,7 +78,10 @@ def _console_view(run_dir: Path) -> dict[str, Any]:
     final_doc = _read_json(final_path)
     final_frame = frames[-1]
     meta = final_frame.get("meta")
-    meta_obj = meta if isinstance(meta, dict) else {}
+    meta_obj: dict[str, Any] = {}
+    if isinstance(meta, dict):
+        raw_meta = cast(dict[object, Any], meta)
+        meta_obj = {str(key): value for key, value in raw_meta.items()}
     replay_match: bool | None = None
     if "replay_match" in meta_obj:
         replay_match = bool(meta_obj.get("replay_match"))
@@ -131,7 +139,9 @@ def _evidence_view(trace_path: Path) -> dict[str, Any]:
     }
 
 
-def _eval_view(report_path: Path, delta_path: Path | None, pareto_path: Path | None) -> dict[str, Any]:
+def _eval_view(
+    report_path: Path, delta_path: Path | None, pareto_path: Path | None
+) -> dict[str, Any]:
     report = _read_json(report_path)
     required = ["acc", "acc_per_$", "acc_per_min", "median_latency", "median_cost"]
     missing = [key for key in required if key not in report]
@@ -172,15 +182,25 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     stripped = raw.strip()
     if not stripped:
-        raise CliFailure("unsupported", f"policy log has no typed rows: {log_path}", 1, retryable=False)
+        raise CliFailure(
+            "unsupported", f"policy log has no typed rows: {log_path}", 1, retryable=False
+        )
 
     if stripped.startswith("{") or stripped.startswith("["):
         try:
             data = json.loads(stripped)
             if isinstance(data, dict):
-                rows = [data]
+                raw_row = cast(dict[object, Any], data)
+                rows = [{str(key): value for key, value in raw_row.items()}]
             elif isinstance(data, list):
-                rows = [x for x in data if isinstance(x, dict)]
+                parsed_rows: list[dict[str, Any]] = []
+                data_rows = cast(list[Any], data)
+                for item in data_rows:
+                    if not isinstance(item, dict):
+                        continue
+                    raw_item = cast(dict[object, Any], item)
+                    parsed_rows.append({str(key): value for key, value in raw_item.items()})
+                rows = parsed_rows
         except json.JSONDecodeError:
             # Fallback for NDJSON payloads that begin with '{'.
             rows = []
@@ -191,7 +211,8 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
                 continue
             parsed = json.loads(line)
             if isinstance(parsed, dict):
-                rows.append(parsed)
+                raw_parsed = cast(dict[object, Any], parsed)
+                rows.append({str(key): value for key, value in raw_parsed.items()})
 
     typed_rows: list[dict[str, Any]] = []
     for row in rows:
@@ -230,7 +251,9 @@ def _policy_view(log_path: Path) -> dict[str, Any]:
             )
 
     if not typed_rows:
-        raise CliFailure("unsupported", f"policy log has no typed rows: {log_path}", 1, retryable=False)
+        raise CliFailure(
+            "unsupported", f"policy log has no typed rows: {log_path}", 1, retryable=False
+        )
 
     return {"surface": "policy", "log_ptr": str(log_path), "rows": typed_rows}
 

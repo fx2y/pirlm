@@ -18,7 +18,7 @@ class TestSpec10C0Reconcile(unittest.TestCase):
                 data = json.loads(line)
                 if data.get("k") == "meta":
                     meta_found = True
-                    self.assertEqual(data.get("asof"), "2026-02-23")
+                    self.assertEqual(data.get("asof"), "2026-02-24")
                     break
             self.assertTrue(meta_found, "Meta row not found in tasks.jsonl")
 

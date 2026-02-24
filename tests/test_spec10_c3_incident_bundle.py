@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import subprocess
 import unittest
+from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 from unittest.mock import patch
 
 from pirml.cli_common import CliFailure
@@ -12,7 +14,7 @@ from scripts import spec10_incident
 
 
 def _mk_trace(trace_path: Path, *, ok: bool = True, fail_tag: str = "") -> None:
-    frame = {
+    frame: dict[str, Any] = {
         "op": "final",
         "id": "c00001",
         "seq": 1,
@@ -29,6 +31,26 @@ def _mk_final(final_path: Path, *, ok: bool = True) -> None:
         json.dumps({"ok": ok, "results": [], "output": {"ok": ok}}, sort_keys=True),
         encoding="utf-8",
     )
+
+
+def _fake_run_factory(
+    root: Path, *, replay_ok: bool = True
+) -> Callable[[list[str], dict[str, str] | None], subprocess.CompletedProcess[str]]:
+    def _fake_run(
+        cmd: list[str], env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        del env
+        if "scripts.tools.replay" in cmd:
+            out_idx = cmd.index("--out-dir") + 1
+            replay_out = Path(cmd[out_idx])
+            replay_out.mkdir(parents=True, exist_ok=True)
+            if replay_ok:
+                (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
+            else:
+                _mk_final(replay_out / "final.json", ok=False)
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    return _fake_run
 
 
 class TestSpec10C3IncidentBundle(unittest.TestCase):
@@ -81,14 +103,10 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json")
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
-            with patch("scripts.spec10_incident._run_command", side_effect=_fake_run):
+            with patch(
+                "scripts.spec10_incident._run_command",
+                side_effect=_fake_run_factory(root, replay_ok=True),
+            ):
                 result = spec10_incident.run_incident(
                     trace_path=trace_path,
                     out_dir=out_dir,
@@ -110,15 +128,11 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json")
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    _mk_final(replay_out / "final.json", ok=False)
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
             with (
-                patch("scripts.spec10_incident._run_command", side_effect=_fake_run),
+                patch(
+                    "scripts.spec10_incident._run_command",
+                    side_effect=_fake_run_factory(root, replay_ok=False),
+                ),
                 self.assertRaises(CliFailure) as ctx,
             ):
                 spec10_incident.run_incident(
@@ -140,14 +154,10 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json")
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
-            with patch("scripts.spec10_incident._run_command", side_effect=_fake_run):
+            with patch(
+                "scripts.spec10_incident._run_command",
+                side_effect=_fake_run_factory(root, replay_ok=True),
+            ):
                 spec10_incident.run_incident(
                     trace_path=trace_path,
                     out_dir=out_dir,
@@ -177,14 +187,10 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json")
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
-            with patch("scripts.spec10_incident._run_command", side_effect=_fake_run):
+            with patch(
+                "scripts.spec10_incident._run_command",
+                side_effect=_fake_run_factory(root, replay_ok=True),
+            ):
                 spec10_incident.run_incident(
                     trace_path=trace_path,
                     out_dir=out_dir,
@@ -201,7 +207,7 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             root = Path(tmp)
             trace_path = root / "trace.ndjson"
             heavy = "x" * 2000
-            frame = {
+            frame: dict[str, Any] = {
                 "op": "final",
                 "id": "c00001",
                 "seq": 1,
@@ -212,14 +218,10 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json")
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
-            with patch("scripts.spec10_incident._run_command", side_effect=_fake_run):
+            with patch(
+                "scripts.spec10_incident._run_command",
+                side_effect=_fake_run_factory(root, replay_ok=True),
+            ):
                 spec10_incident.run_incident(
                     trace_path=trace_path,
                     out_dir=out_dir,
@@ -242,14 +244,10 @@ class TestSpec10C3IncidentBundle(unittest.TestCase):
             _mk_final(root / "final.json", ok=False)
             out_dir = root / "out"
 
-            def _fake_run(cmd, env=None):
-                if "scripts.tools.replay" in cmd:
-                    replay_out = Path(cmd[cmd.index("--out-dir") + 1])
-                    replay_out.mkdir(parents=True, exist_ok=True)
-                    (replay_out / "final.json").write_bytes((root / "final.json").read_bytes())
-                return subprocess.CompletedProcess(cmd, 0, "", "")
-
-            with patch("scripts.spec10_incident._run_command", side_effect=_fake_run):
+            with patch(
+                "scripts.spec10_incident._run_command",
+                side_effect=_fake_run_factory(root, replay_ok=True),
+            ):
                 result = spec10_incident.run_incident(
                     trace_path=trace_path,
                     out_dir=out_dir,

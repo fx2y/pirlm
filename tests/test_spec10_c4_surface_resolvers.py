@@ -6,6 +6,7 @@ import unittest
 from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import Any
 
 
 def _sha256_path(path: Path) -> str:
@@ -47,12 +48,17 @@ def _mk_trace(trace_path: Path) -> None:
             "sha256_output": "9a8ece0dfd1e74060f516ddf4a4bdca939f89baad438875f4e8043e5e264f29d",
         },
     ]
-    trace_path.write_text("\n".join(json.dumps(row, separators=(",", ":")) for row in frames) + "\n")
+    trace_path.write_text(
+        "\n".join(json.dumps(row, separators=(",", ":")) for row in frames) + "\n"
+    )
 
 
 def _mk_final(final_path: Path, *, ok: bool = True) -> None:
     final_path.write_text(
-        json.dumps({"ok": ok, "results": [{"id": "c00001", "ok": ok, "tool": "echo"}]}, separators=(",", ":"))
+        json.dumps(
+            {"ok": ok, "results": [{"id": "c00001", "ok": ok, "tool": "echo"}]},
+            separators=(",", ":"),
+        )
     )
 
 
@@ -94,7 +100,14 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
 
     def test_console_missing_artifact_fails(self):
         with TemporaryDirectory(prefix="spec10_c4_console_missing_") as tmp:
-            cmd = ["python3", "-m", "scripts.spec10_surface", "console", "--run", str(Path(tmp) / "run")]
+            cmd = [
+                "python3",
+                "-m",
+                "scripts.spec10_surface",
+                "console",
+                "--run",
+                str(Path(tmp) / "run"),
+            ]
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             self.assertEqual(res.returncode, 2)
             err = json.loads(res.stderr)
@@ -105,7 +118,14 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
             trace_path = Path(tmp) / "trace.ndjson"
             _mk_trace(trace_path)
 
-            cmd = ["python3", "-m", "scripts.spec10_surface", "evidence", "--trace", str(trace_path)]
+            cmd = [
+                "python3",
+                "-m",
+                "scripts.spec10_surface",
+                "evidence",
+                "--trace",
+                str(trace_path),
+            ]
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             self.assertEqual(res.returncode, 0)
             payload = json.loads(res.stdout)
@@ -119,7 +139,7 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
         with TemporaryDirectory(prefix="spec10_c4_evidence_dup_") as tmp:
             trace_path = Path(tmp) / "trace.ndjson"
             _mk_trace(trace_path)
-            extra = {
+            extra: dict[str, Any] = {
                 "op": "final",
                 "seq": 4,
                 "dir": "in",
@@ -131,7 +151,14 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
             }
             trace_path.write_text(trace_path.read_text(encoding="utf-8") + json.dumps(extra) + "\n")
 
-            cmd = ["python3", "-m", "scripts.spec10_surface", "evidence", "--trace", str(trace_path)]
+            cmd = [
+                "python3",
+                "-m",
+                "scripts.spec10_surface",
+                "evidence",
+                "--trace",
+                str(trace_path),
+            ]
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             self.assertEqual(res.returncode, 2)
             err = json.loads(res.stderr)
@@ -204,7 +231,9 @@ class TestSpec10C4SurfaceResolvers(unittest.TestCase):
                 },
                 {"decision": "allow", "type": "policy_decision", "msg": "caller allowed", "rc": 0},
             ]
-            policy_path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            policy_path.write_text(
+                "\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8"
+            )
 
             cmd = ["python3", "-m", "scripts.spec10_surface", "policy", "--log", str(policy_path)]
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)

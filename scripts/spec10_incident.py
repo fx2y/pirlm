@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pirml.cli_common import CliFailure, emit_failure, strict_parse_args
 from pirml.protocol import ProtocolError, load_jsonl
@@ -29,7 +29,9 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_command(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def _run_command(
+    cmd: list[str], env: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
 
 
@@ -49,8 +51,10 @@ def _extract_fail_tag(frames: list[dict[str, Any]]) -> str:
         if isinstance(final.get("fail_tag"), str):
             sources.append(final.get("fail_tag"))
         result = final.get("result")
-        if isinstance(result, dict) and isinstance(result.get("fail_tag"), str):
-            sources.append(result.get("fail_tag"))
+        if isinstance(result, dict):
+            result_obj = cast(dict[str, Any], result)
+            if isinstance(result_obj.get("fail_tag"), str):
+                sources.append(result_obj.get("fail_tag"))
     for frame in frames:
         if isinstance(frame.get("fail_tag"), str):
             sources.append(frame.get("fail_tag"))
@@ -60,7 +64,9 @@ def _extract_fail_tag(frames: list[dict[str, Any]]) -> str:
         if not value:
             continue
         if any(ch in value for ch in ("|", ",", ";")):
-            raise CliFailure("validation", f"fail_tag must be single-label: {value}", 1, retryable=False)
+            raise CliFailure(
+                "validation", f"fail_tag must be single-label: {value}", 1, retryable=False
+            )
         return value
     return ""
 
@@ -92,7 +98,9 @@ def _hint(class_name: str, replay_match: bool, artifact_parity: bool, trace_path
     return text[:117] + "..."
 
 
-def run_incident(*, trace_path: Path, out_dir: Path, prog_path: Path, timeout_s: float) -> IncidentResult:
+def run_incident(
+    *, trace_path: Path, out_dir: Path, prog_path: Path, timeout_s: float
+) -> IncidentResult:
     if timeout_s <= 0:
         raise CliFailure("validation", "--timeout must be > 0", 1, retryable=False)
     if not trace_path.is_file():
@@ -114,6 +122,7 @@ def run_incident(*, trace_path: Path, out_dir: Path, prog_path: Path, timeout_s:
     final_result = final_frame.get("result")
     if not isinstance(final_result, dict):
         final_result = {}
+    final_result_obj = cast(dict[str, Any], final_result)
 
     source_final = trace_path.parent / "final.json"
     if not source_final.is_file():
@@ -176,7 +185,7 @@ def run_incident(*, trace_path: Path, out_dir: Path, prog_path: Path, timeout_s:
         },
         "final": {
             "ok": final_ok,
-            "has_results": isinstance(final_result.get("results"), list),
+            "has_results": isinstance(final_result_obj.get("results"), list),
             "fail_tag": fail_tag,
         },
     }
