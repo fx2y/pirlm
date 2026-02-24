@@ -100,6 +100,7 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
             "scripts.tools.replay",
             "scripts.spec10_matrix",
             "scripts.replay_check",
+            "scripts.spec10_incident",
             "scripts.artifact_rebuild",
             "scripts.web_fixture_smoke",
             "scripts.spec09_tool_smoke",

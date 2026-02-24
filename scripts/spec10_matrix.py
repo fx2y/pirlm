@@ -140,7 +140,7 @@ def get_matrix_rows() -> list[dict[str, Any]]:
             "k": "row",
             "lane": "W9",
             "name": "J11 Incident triage lane",
-            "cmd": "python -m scripts.replay_check",
+            "cmd": "python -m scripts.spec10_incident --trace out/ci/trace.ndjson --out-dir out/spec10_incident",
             "authority": True,
             "deps": [],
             "deterministic": True,
