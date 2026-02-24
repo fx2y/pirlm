@@ -13,16 +13,16 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
         if not os.path.exists(self.MATRIX_PATH):
             self.skipTest(f"{self.MATRIX_PATH} not materialized yet")
 
-        lanes = {}
+        lanes: dict[str, str] = {}
         with open(self.MATRIX_PATH) as f:
             for line in f:
                 data = json.loads(line)
                 if data.get("k") == "row":
-                    lane = data.get("lane")
-                    is_authority = data.get("authority", False)
+                    lane = str(data.get("lane"))
+                    is_authority = bool(data.get("authority", False))
                     if is_authority:
                         self.assertNotIn(lane, lanes, f"Duplicate authority for lane {lane}")
-                        lanes[lane] = data.get("cmd")
+                        lanes[lane] = str(data.get("cmd"))
 
         expected_lanes = [f"W{i}" for i in range(11)]
         for lane in expected_lanes:
@@ -42,8 +42,14 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
             for line in f:
                 data = json.loads(line)
                 if data.get("k") == "alias":
-                    self.assertFalse(data.get("authority", False), f"Alias row {data.get('alias')} must not be authority")
-                    self.assertTrue(data.get("ref"), f"Alias row {data.get('alias')} must have a reference to an authority lane")
+                    self.assertFalse(
+                        data.get("authority", False),
+                        f"Alias row {data.get('alias')} must not be authority",
+                    )
+                    self.assertTrue(
+                        data.get("ref"),
+                        f"Alias row {data.get('alias')} must have a reference to an authority lane",
+                    )
 
     def test_alias_without_authority_fails(self):
         """I03: Negative test for alias without authority ref."""
@@ -58,10 +64,12 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
         # Use an invalid lane
         cmd = ["python3", "-m", "scripts.spec10_matrix", "--lane", "W99"]
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         # C1 matrix/CLI parse failures are typed config rc2 (I04)
-        self.assertEqual(result.returncode, 2, f"Expected rc2 for invalid lane, got {result.returncode}")
-        
+        self.assertEqual(
+            result.returncode, 2, f"Expected rc2 for invalid lane, got {result.returncode}"
+        )
+
         stderr_data = json.loads(result.stderr)
         self.assertEqual(stderr_data.get("type"), "config")
         self.assertIn("W99", stderr_data.get("msg"))
@@ -73,10 +81,10 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
 
         cmd = ["python3", "-m", "scripts.spec10_matrix", "--invalid-flag"]
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         self.assertEqual(result.returncode, 2)
         self.assertNotIn("usage:", result.stderr.lower())
-        
+
         # Should be a typed JSON envelope
         stderr_data = json.loads(result.stderr)
         self.assertEqual(stderr_data.get("type"), "config")
@@ -95,6 +103,7 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
             "scripts.artifact_rebuild",
             "scripts.web_fixture_smoke",
             "scripts.spec09_tool_smoke",
+            "python -m pirml",
             "mise run",
         ]
 
@@ -106,7 +115,7 @@ class TestSpec10C1CommandMatrix(unittest.TestCase):
                     # Ensure it uses one of the valid owner entry points
                     self.assertTrue(
                         any(owner in cmd for owner in valid_owners),
-                        f"Authority command {cmd} must route through owner path"
+                        f"Authority command {cmd} must route through owner path",
                     )
 
     def test_direct_runtime_spawn_row_fails(self):
